@@ -337,3 +337,24 @@ details.card input { margin-top: 12px; }
 }
 .choice button.on { border-color: var(--blue); background: rgba(46, 123, 255, 0.14); }
 .choice small { color: var(--muted); font-size: 12.5px; line-height: 1.35; }
+
+/* ---------- confirmation + spending sheets */
+.confirm-list { list-style: none; padding: 0; margin: 0 0 14px; background: var(--surface-2); border: 1px solid var(--line); border-radius: 14px; }
+.confirm-list li { display: flex; justify-content: space-between; gap: 12px; padding: 11px 14px; border-bottom: 1px solid var(--line); font-size: 15px; }
+.confirm-list li:last-child { border-bottom: 0; }
+.confirm-list span { color: var(--muted); }
+.confirm-list b { text-align: right; }
+.confirm-list b.warn { color: var(--orange-hi); }
+.spend-hero { display: flex; align-items: baseline; gap: 10px; margin: 0 0 18px; }
+.spend-hero b { font-size: 40px; letter-spacing: -0.02em; }
+.spend-hero span { color: var(--muted); }
+.mini-title { font-size: 13px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin: 18px 0 8px; }
+.runs { list-style: none; padding: 0; margin: 0 0 8px; }
+.runs li { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.real-bill { margin-top: 22px; padding: 16px; border-radius: 16px; background: rgba(46, 123, 255, 0.08); border: 1px solid rgba(46, 123, 255, 0.3); }
+.real-bill p { margin: 0 0 12px; font-size: 14px; line-height: 1.45; }
+.real-bill .fine { margin: 10px 0 0; }
+.wide-btn { width: 100%; margin-top: 2px; }
+.card .btn.ghost.wide-btn { margin-top: 0; margin-bottom: 4px; }
+.hint-box { margin-top: 16px; padding: 10px 12px; border-radius: 12px; background: rgba(255, 163, 108, 0.08); color: var(--orange-hi); }
+.transcript.preview p { font-size: 14.5px; }

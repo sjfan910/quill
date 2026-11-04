@@ -4,6 +4,7 @@ import { listModels } from '../lib/gemini'
 import { liveSupported } from '../lib/live'
 import { fmtUsd, isPro, monthSpend } from '../lib/pricing'
 import { go } from '../lib/router'
+import SpendingSheet from '../components/SpendingSheet'
 import { DEFAULT_STYLE, MAX_PREFS, loadSettings, saveSettings, type Settings as S } from '../lib/settings'
 
 export default function Settings() {
@@ -11,6 +12,7 @@ export default function Settings() {
   const [models, setModels] = useState<string[]>([])
   const [usage, setUsage] = useState('')
   const [newPref, setNewPref] = useState('')
+  const [spendOpen, setSpendOpen] = useState(false)
 
   const set = (patch: Partial<S>) => {
     const next = { ...s, ...patch }
@@ -84,8 +86,12 @@ export default function Settings() {
             onChange={(e) => set({ monthlyCap: Math.max(0, Number(e.target.value) || 0) })}
           />
         </label>
+        <button className="btn ghost wide-btn" onClick={() => setSpendOpen(true)}>
+          See breakdown &amp; real bill ›
+        </button>
         <p className="fine">Estimated from token counts on this phone. Your Google billing page is the source of truth.</p>
       </section>
+      <SpendingSheet open={spendOpen} onClose={() => setSpendOpen(false)} />
 
       <section className="card">
         <h2>🎙️ Transcription</h2>

@@ -3,7 +3,8 @@ import { Sheet, toast } from '../components/ui'
 import { deleteLecture, getAudio, getCourse, getLecture, listCourses, nextLectureNumber, patchLecture, putBlob } from '../lib/db'
 import { canDirectExport, copyRich, exportToGoogleDoc, preloadGoogle } from '../lib/gdocs'
 import { isRunning, lectureCost, processLecture } from '../lib/gemini'
-import { estimate, fmtUsd } from '../lib/pricing'
+import { planTranscription } from '../lib/gaps'
+import { estimate, fmtUsd, monthSpend } from '../lib/pricing'
 import { useData } from '../lib/hooks'
 import { renderForDocs, renderNotes } from '../lib/markdown'
 import { go } from '../lib/router'
@@ -18,7 +19,7 @@ export default function Lecture({ id }: { id: string }) {
   const l = useData(() => getLecture(id), [id])
   const course = useData(async () => (l?.courseId ? getCourse(l.courseId) : undefined), [l?.courseId])
   const [tab, setTab] = useState<'notes' | 'map' | 'text'>('notes')
-  const [sheet, setSheet] = useState<null | 'improve' | 'export' | 'edit'>(null)
+  const [sheet, setSheet] = useState<null | 'improve' | 'export' | 'edit' | 'accurate' | 'preview'>(null)
   const [step, setStep] = useState('')
   const audioRef = useRef<HTMLAudioElement>(null)
   const [audioUrl, setAudioUrl] = useState<string>()
@@ -50,6 +51,7 @@ export default function Lecture({ id }: { id: string }) {
     processLecture(id, {
       feedback,
       retranscribe,
+      confirmed: retranscribe, // the "Send to Gemini?" sheet already showed cost and cap
       manual: true,
       onProgress: setStep,
       onLearned: (prefs) => setTimeout(() => toast(`🧠 Learned: ${prefs[0]}`), 2800),
@@ -92,7 +94,12 @@ export default function Lecture({ id }: { id: string }) {
         <div className="state-card">
           <div className="spinner" />
           <p className="state-title">Making your notes</p>
-          <p className="state-sub">{step || 'Working on it…'} You can leave this screen.</p>
+          <p className="state-sub">{step || 'Working on it…'} Keep Quill open for a minute.</p>
+          {(l.transcript?.length || l.live?.length) ? (
+            <button className="big-btn ghost" onClick={() => setSheet('preview')}>
+              👀 Preview transcript
+            </button>
+          ) : null}
         </div>
       ) : !l.notesMd ? (
         <div className="state-card">
@@ -132,14 +139,7 @@ export default function Lecture({ id }: { id: string }) {
           ) : tab === 'text' ? (
             <Transcript
               l={l}
-              onAccurate={() => {
-                const s = loadSettings()
-                const est = estimate({ transcribeSec: l.durationSec, transcribeModel: s.transcribeModel, notesModel: s.model, transcriptWords: l.durationSec * 2.3 })
-                if (confirm(`Have Gemini re-transcribe the audio accurately and remake the notes from it? About ${fmtUsd(est)} for this lecture.`)) {
-                  setTab('notes')
-                  generate(undefined, true)
-                }
-              }}
+              onAccurate={() => setSheet('accurate')}
               onSeek={(t) => {
                 if (audioRef.current) {
                   audioRef.current.currentTime = t
@@ -169,6 +169,19 @@ export default function Lecture({ id }: { id: string }) {
         )}
       </div>
 
+      <AccurateSheet
+        open={sheet === 'accurate'}
+        onClose={() => setSheet(null)}
+        lecture={l}
+        onSend={() => {
+          setSheet(null)
+          setTab('notes')
+          generate(undefined, true)
+        }}
+      />
+      <Sheet open={sheet === 'preview'} onClose={() => setSheet(null)} title="Transcript preview">
+        <TranscriptPreview l={l} />
+      </Sheet>
       <ImproveSheet open={sheet === 'improve'} onClose={() => setSheet(null)} lectureId={id} onGo={(fb) => (setSheet(null), generate(fb))} />
       <ExportSheet open={sheet === 'export'} onClose={() => setSheet(null)} lectureId={id} heading={heading} />
       <EditSheet open={sheet === 'edit'} onClose={() => setSheet(null)} lectureId={id} onRegenerate={() => (setSheet(null), generate())} />
@@ -227,6 +240,83 @@ function Transcript({ l, onSeek, onAccurate }: { l: LectureT; onSeek: (t: number
 function transcriptPlain(l: LectureT) {
   const head = `${l.title} · ${fmtDate(l.createdAt)} · ${fmtDuration(l.durationSec)}`
   return [head, '', ...(l.transcript ?? []).map((s) => `[${fmtTime(s.t)}] ${s.text}`)].join('\n')
+}
+
+// ------------------------------------------------------------------ Transcript preview (while notes are being made)
+
+function TranscriptPreview({ l }: { l: LectureT }) {
+  const final = l.transcript ?? []
+  const draft = l.live ?? []
+  const segs = final.length ? final : draft.map((s) => ({ ...s, src: 'live' as const }))
+  return (
+    <div className="transcript preview">
+      <p className="fine">
+        {final.length
+          ? 'Final transcript. Notes are being written from this.'
+          : draft.length
+            ? "Free draft from your phone. Gemini is filling any gaps it missed."
+            : 'No transcript yet.'}
+      </p>
+      {segs.map((s, i) => (
+        <p key={i} className={s.src === 'gemini' ? 'paid' : ''}>
+          <span className="ts">{fmtTime(s.t)}</span> {s.text}
+        </p>
+      ))}
+      {segs.some((s) => s.src === 'live') && (
+        <p className="fine hint-box">Looks rough? When the notes are ready, open Transcript → ✨ Make it accurate.</p>
+      )}
+    </div>
+  )
+}
+
+// ------------------------------------------------------------------ Accurate transcript confirmation
+
+function AccurateSheet({ open, onClose, lecture: l, onSend }: { open: boolean; onClose: () => void; lecture: LectureT; onSend: () => void }) {
+  if (!open) return null
+  const s = loadSettings()
+  const ranges = planTranscription(l.loudness ?? [], [], l.durationSec).ranges
+  const sec = ranges.reduce((n, [a, b]) => n + (b - a), 0)
+  const words = (l.transcript ?? []).reduce((n, x) => n + x.text.split(/\s+/).length, 0) || l.durationSec * 2.3
+  const est = estimate({ transcribeSec: sec, transcribeModel: s.transcribeModel, notesModel: s.model, transcriptWords: words })
+  const after = monthSpend() + est
+  const overCap = s.monthlyCap > 0 && after > s.monthlyCap
+  return (
+    <Sheet open={open} onClose={onClose} title="Send to Gemini?">
+      <ul className="confirm-list">
+        <li>
+          <span>Audio sent</span>
+          <b>{fmtDuration(sec)}</b>
+        </li>
+        <li>
+          <span>Transcribed by</span>
+          <b>{s.transcribeModel.replace('gemini-', '').replace('-latest', '')}</b>
+        </li>
+        <li>
+          <span>Then</span>
+          <b>notes remade from the new transcript</b>
+        </li>
+        <li>
+          <span>Estimated cost</span>
+          <b>{fmtUsd(est)}</b>
+        </li>
+        <li>
+          <span>This month after</span>
+          <b className={overCap ? 'warn' : ''}>
+            {fmtUsd(after)}
+            {s.monthlyCap > 0 ? ` of $${s.monthlyCap}` : ''}
+          </b>
+        </li>
+      </ul>
+      {overCap && <p className="error">This goes over your monthly cap.</p>}
+      <p className="fine">The free transcript is replaced. Silence before and after class isn't sent.</p>
+      <button className="big-btn blue" onClick={onSend}>
+        ✨ Send to Gemini
+      </button>
+      <button className="big-btn ghost" onClick={onClose}>
+        Cancel
+      </button>
+    </Sheet>
+  )
 }
 
 // ------------------------------------------------------------------ Improve

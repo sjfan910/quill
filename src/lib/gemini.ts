@@ -400,7 +400,7 @@ export type Progress = (step: string) => void
 const running = new Map<string, Promise<void>>()
 export const isRunning = (id: string) => running.has(id)
 
-type RunOpts = { feedback?: string; manual?: boolean; retranscribe?: boolean; onProgress?: Progress; onLearned?: (prefs: string[]) => void }
+type RunOpts = { feedback?: string; manual?: boolean; retranscribe?: boolean; confirmed?: boolean; onProgress?: Progress; onLearned?: (prefs: string[]) => void }
 
 /** Generate (or refine) notes for a lecture. Safe to call from any screen. */
 export function processLecture(id: string, opts: RunOpts = {}) {
@@ -432,12 +432,12 @@ async function guard(l: Lecture, manual: boolean, retranscribe: boolean, accurat
   return null
 }
 
-async function run(id: string, { feedback, manual = false, retranscribe = false, onProgress, onLearned }: RunOpts) {
+async function run(id: string, { feedback, manual = false, retranscribe = false, confirmed = false, onProgress, onLearned }: RunOpts) {
   const step = (s: string) => onProgress?.(s)
   let l = await getLecture(id)
   if (!l) return
   const accurate = retranscribe || !loadSettings().liveTranscribe
-  const blocked = await guard(l, manual, retranscribe, accurate)
+  const blocked = confirmed ? null : await guard(l, manual, retranscribe, accurate)
   if (blocked) {
     if (blocked !== 'cancelled') await patchLecture(id, { status: l.notesMd ? 'ready' : 'saved', error: blocked })
     return
