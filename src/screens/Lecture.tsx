@@ -2,12 +2,14 @@ import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import { Sheet, toast } from '../components/ui'
 import { deleteLecture, getAudio, getCourse, getLecture, listCourses, nextLectureNumber, patchLecture, putBlob } from '../lib/db'
 import { canDirectExport, copyRich, exportToGoogleDoc, preloadGoogle } from '../lib/gdocs'
-import { isRunning, processLecture } from '../lib/gemini'
+import { isRunning, lectureCost, processLecture } from '../lib/gemini'
+import { fmtUsd } from '../lib/pricing'
 import { useData } from '../lib/hooks'
 import { renderForDocs, renderNotes } from '../lib/markdown'
 import { go } from '../lib/router'
 import { continueLecture } from '../lib/session'
 import { loadSettings } from '../lib/settings'
+import type { Lecture as LectureT } from '../lib/types'
 import { fmtDate, fmtDuration, fmtTime } from '../lib/util'
 
 const MindMap = lazy(() => import('../components/MindMap'))
@@ -15,7 +17,7 @@ const MindMap = lazy(() => import('../components/MindMap'))
 export default function Lecture({ id }: { id: string }) {
   const l = useData(() => getLecture(id), [id])
   const course = useData(async () => (l?.courseId ? getCourse(l.courseId) : undefined), [l?.courseId])
-  const [tab, setTab] = useState<'notes' | 'map'>('notes')
+  const [tab, setTab] = useState<'notes' | 'map' | 'text'>('notes')
   const [sheet, setSheet] = useState<null | 'improve' | 'export' | 'edit'>(null)
   const [step, setStep] = useState('')
   const audioRef = useRef<HTMLAudioElement>(null)
@@ -47,6 +49,7 @@ export default function Lecture({ id }: { id: string }) {
     setStep('Starting…')
     processLecture(id, {
       feedback,
+      manual: true,
       onProgress: setStep,
       onLearned: (prefs) => setTimeout(() => toast(`🧠 Learned: ${prefs[0]}`), 2800),
     })
@@ -80,6 +83,7 @@ export default function Lecture({ id }: { id: string }) {
         <h1>{l.title}</h1>
         <p className="meta">
           {fmtDate(l.createdAt)} · {fmtDuration(l.durationSec)}
+          {lectureCost(l) > 0 && <span title="Estimated Gemini cost"> · {fmtUsd(lectureCost(l))}</span>}
         </p>
       </div>
 
@@ -118,9 +122,22 @@ export default function Lecture({ id }: { id: string }) {
             <button className={tab === 'map' ? 'on' : ''} onClick={() => setTab('map')}>
               Mind map
             </button>
+            <button className={tab === 'text' ? 'on' : ''} onClick={() => setTab('text')}>
+              Transcript
+            </button>
           </div>
           {tab === 'notes' ? (
             <article className="notes" onClick={seek} dangerouslySetInnerHTML={{ __html: html }} />
+          ) : tab === 'text' ? (
+            <Transcript
+              l={l}
+              onSeek={(t) => {
+                if (audioRef.current) {
+                  audioRef.current.currentTime = t
+                  audioRef.current.play().catch(() => {})
+                }
+              }}
+            />
           ) : (
             <Suspense fallback={<div className="mindmap" />}>
               <MindMap md={l.mindmapMd || `# ${l.title}`} />
@@ -147,6 +164,34 @@ export default function Lecture({ id }: { id: string }) {
       <ExportSheet open={sheet === 'export'} onClose={() => setSheet(null)} lectureId={id} heading={heading} />
       <EditSheet open={sheet === 'edit'} onClose={() => setSheet(null)} lectureId={id} onRegenerate={() => (setSheet(null), generate())} />
     </main>
+  )
+}
+
+// ------------------------------------------------------------------ Transcript
+
+function Transcript({ l, onSeek }: { l: LectureT; onSeek: (t: number) => void }) {
+  const segs = l.transcript ?? []
+  const st = l.transcriptStats
+  const freePct = st && st.liveSec + st.paidSec > 0 ? Math.round((100 * st.liveSec) / (st.liveSec + st.paidSec)) : 0
+  return (
+    <div className="transcript">
+      {st && (
+        <p className="fine">
+          {freePct > 0 ? `${freePct}% transcribed free on your phone · ` : ''}
+          {st.paidSec === 0 ? 'Nothing' : fmtDuration(st.paidSec)} sent to Gemini
+          {l.liveNote ? ` · ${l.liveNote}` : ''}
+        </p>
+      )}
+      {segs.length === 0 && <p className="empty">No transcript yet.</p>}
+      {segs.map((s, i) => (
+        <p key={i} className={s.src === 'gemini' ? 'paid' : ''}>
+          <button className="ts" onClick={() => onSeek(s.t)}>
+            {fmtTime(s.t)}
+          </button>{' '}
+          {s.text}
+        </p>
+      ))}
+    </div>
   )
 }
 

@@ -306,3 +306,24 @@ details.card input { margin-top: 12px; }
 .icon-btn.small { width: 30px; height: 30px; font-size: 13px; background: var(--surface-2); }
 .empty.small { padding: 8px 0; font-size: 14px; text-align: left; }
 .card .note-form .btn.ghost { margin-top: 0; }
+
+.caption {
+  margin: 14px 0 0; max-width: 100%; padding: 0 8px; text-align: center;
+  color: var(--muted); font-size: 14px; line-height: 1.4; opacity: 0.8;
+  overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+}
+
+/* ---------- transcript */
+.transcript p { margin: 0 0 12px; font-size: 15px; line-height: 1.55; }
+.transcript p.paid { border-left: 2px solid rgba(255, 163, 108, 0.5); padding-left: 10px; }
+.transcript .fine { margin: 0 0 14px; }
+
+/* ---------- spending + toggles */
+.spend { margin-bottom: 14px; }
+.spend p { margin: 8px 0 0; font-size: 15px; }
+.spend-bar { height: 8px; border-radius: 4px; background: var(--surface-2); overflow: hidden; }
+.spend-bar span { display: block; height: 100%; background: linear-gradient(90deg, var(--blue), var(--orange)); border-radius: 4px; }
+.toggle { display: flex; gap: 12px; align-items: flex-start; margin-bottom: 14px; cursor: pointer; }
+.toggle input { width: 22px; height: 22px; flex: 0 0 22px; margin-top: 2px; accent-color: var(--blue); }
+.toggle small { color: var(--muted); font-size: 13px; }
+.fine.warn { color: var(--orange-hi); }

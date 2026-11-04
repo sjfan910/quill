@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import { TopBar, toast } from '../components/ui'
 import { listModels } from '../lib/gemini'
+import { liveSupported } from '../lib/live'
+import { fmtUsd, isPro, monthSpend } from '../lib/pricing'
 import { go } from '../lib/router'
 import { DEFAULT_STYLE, MAX_PREFS, loadSettings, saveSettings, type Settings as S } from '../lib/settings'
 
@@ -50,14 +52,65 @@ export default function Settings() {
       </section>
 
       <section className="card">
-        <h2>Model</h2>
+        <h2>Notes model</h2>
         <select value={s.model} onChange={(e) => set({ model: e.target.value })}>
           {[...new Set(['gemini-flash-latest', 'gemini-pro-latest', s.model, ...models])].map((m) => (
             <option key={m} value={m}>
-              {m === 'gemini-flash-latest' ? 'Flash (fast, cheap) · recommended' : m === 'gemini-pro-latest' ? 'Pro (smartest, slower)' : m}
+              {m === 'gemini-flash-latest' ? 'Flash (fast, cheap) · recommended' : m === 'gemini-pro-latest' ? 'Pro (smartest, ~5× the cost)' : m}
             </option>
           ))}
         </select>
+        {isPro(s.model) && <p className="fine warn">Pro costs about 5× more. Quill will ask before each run.</p>}
+      </section>
+
+      <section className="card">
+        <h2>💰 Spending</h2>
+        <div className="spend">
+          <div className="spend-bar">
+            <span style={{ width: `${Math.min(100, (100 * monthSpend()) / Math.max(0.01, s.monthlyCap || 1))}%` }} />
+          </div>
+          <p>
+            <b>{fmtUsd(monthSpend())}</b> this month{s.monthlyCap > 0 ? ` of your $${s.monthlyCap} cap` : ' (no cap)'}
+          </p>
+        </div>
+        <label className="field">
+          <span>Monthly cap (USD). Quill asks before going over it. 0 = no cap.</span>
+          <input
+            type="number"
+            inputMode="decimal"
+            min={0}
+            step={1}
+            value={s.monthlyCap}
+            onChange={(e) => set({ monthlyCap: Math.max(0, Number(e.target.value) || 0) })}
+          />
+        </label>
+        <p className="fine">Estimated from token counts on this phone. Your Google billing page is the source of truth.</p>
+      </section>
+
+      <section className="card">
+        <h2>🎙️ Transcription</h2>
+        <label className="toggle">
+          <input type="checkbox" checked={s.liveTranscribe} onChange={(e) => set({ liveTranscribe: e.target.checked })} />
+          <span>
+            <b>Free live transcription</b> (beta)
+            <br />
+            <small>
+              {liveSupported()
+                ? 'Your phone transcribes while recording; Gemini only fills the gaps. Turns itself off if it clashes with the mic.'
+                : 'Not available in this browser.'}
+            </small>
+          </span>
+        </label>
+        <label className="field">
+          <span>Model for the parts the free transcript missed</span>
+          <select value={s.transcribeModel} onChange={(e) => set({ transcribeModel: e.target.value })}>
+            {[...new Set(['gemini-flash-lite-latest', 'gemini-flash-latest', s.transcribeModel, ...models.filter((m) => /flash/.test(m))])].map((m) => (
+              <option key={m} value={m}>
+                {m === 'gemini-flash-lite-latest' ? 'Flash-Lite (cheapest) · recommended' : m === 'gemini-flash-latest' ? 'Flash (if Lite mishears too much)' : m}
+              </option>
+            ))}
+          </select>
+        </label>
       </section>
 
       <section className="card">

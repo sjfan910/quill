@@ -19,18 +19,18 @@ Prices are rough (third-party trackers, not verified against Google's pricing pa
 
 | # | Update | Why | Owner |
 |---|---|---|---|
-| 4 | **Transcript-first pipeline.** Pass 1: audio → timestamped transcript (stored locally). Pass 2: transcript → notes + mind map. **Improve uses the transcript, never re-sends audio.** | Improve drops ~$0.12 → ~$0.01. Also enables search/verification. | [COST] |
+| 4 | ✅ DONE · **Transcript-first pipeline.** Pass 1: audio → timestamped transcript (stored locally). Pass 2: transcript → notes + mind map. **Improve uses the transcript, never re-sends audio.** | Improve drops ~$0.12 → ~$0.01. Also enables search/verification. | [COST] |
 | 5 | ✅ DONE · **Cap thinking tokens.** Minimal for transcription, low for notes. | Thinking is billed as output and is currently unbounded. | [COST] |
-| 6 | **Cost meter + monthly cap.** Read `usageMetadata` per call → "This lecture 5¢ · This month $1.80". Cap (default $5) blocks and asks; confirm before Pro runs. | You see and control spend. | [COST] |
-| 7 | **Model routing.** Flash-Lite for transcription, Flash for notes; setting to choose. Validate transcript quality on a real lecture before making it default. | ~40–60% cheaper per lecture. | [COST] |
+| 6 | ✅ DONE · **Cost meter + monthly cap.** Read `usageMetadata` per call → "This lecture 5¢ · This month $1.80". Cap (default $5) blocks and asks; confirm before Pro runs. | You see and control spend. | [COST] |
+| 7 | ✅ DONE · **Model routing.** Flash-Lite for transcription, Flash for notes; setting to choose. Validate transcript quality on a real lecture before making it default. | ~40–60% cheaper per lecture. | [COST] |
 | 8 | ✅ DONE · **Prompt order static → dynamic** (system prompt, style, memory, then transcript/audio, then marks). | Free implicit-cache hits when they occur; no extra infra. | [COST] |
-| 9 | **Trim leading/trailing silence** before upload (not mid-recording, keeps timestamps valid). | ~5–10% fewer audio tokens. | [COST] |
+| 9 | ✅ DONE · **Trim leading/trailing silence** before upload (not mid-recording, keeps timestamps valid). | ~5–10% fewer audio tokens. | [COST] |
 
 ## P1 · Reliability / never lose work
 
 | # | Update | Why | Owner |
 |---|---|---|---|
-| 10 | **Robust Gemini responses.** Handle truncated/invalid JSON, retry once, readable errors. | Currently a raw parse error. | [COST] (it owns the pipeline) |
+| 10 | ✅ DONE · **Robust Gemini responses.** Handle truncated/invalid JSON, retry once, readable errors. | Currently a raw parse error. | [COST] (it owns the pipeline) |
 | 11 | **Auto-resume unfinished notes** on app reopen; show "keep Quill open ~1 min" while uploading. | iOS kills background web apps; today the job silently dies. | [CRIT] |
 | 12 | **Backup to Google Drive** (all notes + transcripts as JSON/Docs), with a periodic reminder. | Everything lives in one phone's browser storage. | [CRIT] |
 | 13 | **Real-device test pass:** iPhone home-screen wake lock (iOS 18.4+), 75-min lecture, phone call/Siri interruption, low storage. | Untested on real hardware. | [CRIT] + [YOU] |
@@ -44,7 +44,7 @@ Prices are rough (third-party trackers, not verified against Google's pricing pa
 | 16 | ✅ DONE · **Course memory** (~500–800 tokens per class): lecture one-liners, glossary, professor habits, deadlines. Updated in the notes call, compacted when long. | Continuity ("builds on L6"), consistent jargon, better class detection. ≈0.1¢/lecture. | [COST] |
 | 17 | **Learn the class schedule** (weekday + time → preselect class). | Removes the one remaining decision before recording. | [CRIT] |
 | 18 | **Version history / undo** for Improve and Remake. | Improve currently overwrites. | [CRIT] |
-| 19 | **Transcript view + search** across lectures (after #4). | Verify what was said; find anything. | [CRIT] |
+| 19 | 🟡 Transcript view DONE (search still open) · **Transcript view + search** across lectures (after #4). | Verify what was said; find anything. | [CRIT] |
 
 ## P3 · Quality of life
 

@@ -16,6 +16,12 @@ export type Settings = {
   googleClientId: string
   /** Durable preferences learned from Improve feedback ("memory about you"). */
   prefs: string[]
+  /** Free on-device live transcription while recording (experimental). */
+  liveTranscribe: boolean
+  /** Cheap model used to transcribe the parts the live transcript missed. */
+  transcribeModel: string
+  /** Monthly spending cap in USD (estimated). */
+  monthlyCap: number
 }
 
 const KEY = 'quill.settings'
@@ -25,6 +31,9 @@ const defaults: Settings = {
   style: DEFAULT_STYLE,
   googleClientId: '',
   prefs: [],
+  liveTranscribe: true,
+  transcribeModel: 'gemini-flash-lite-latest',
+  monthlyCap: 5,
 }
 
 export const MAX_PREFS = 15

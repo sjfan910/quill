@@ -1,8 +1,10 @@
-import { GoogleGenAI, ThinkingLevel, Type, createPartFromUri, type GenerateContentConfig, type GenerateContentResponse, type Part } from '@google/genai'
+import { GoogleGenAI, ThinkingLevel, Type, createPartFromUri, type GenerateContentConfig, type Part } from '@google/genai'
 import { findOrCreateCourse, getAudio, getBlob, getCourse, getLecture, listCourses, nextLectureNumber, patchLecture, saveCourse } from './db'
+import { chunkRanges, mergeTranscript, planTranscription } from './gaps'
+import { addSpend, estimate, fmtUsd, isPro, monthSpend, overCap, usageOf } from './pricing'
 import { addPrefs, loadSettings } from './settings'
-import type { Course, Lecture, Usage } from './types'
-import { fmtTime } from './util'
+import type { Course, HistoryEntry, Lecture, TranscriptSeg, Usage } from './types'
+import { fmtTime, parseTime } from './util'
 
 function client() {
   const { apiKey } = loadSettings()
@@ -35,21 +37,6 @@ async function uploadAndWait(blob: Blob, mimeType: string, displayName: string) 
   }
   if (f.state === 'FAILED') throw new Error(`Gemini could not process ${displayName}.`)
   return f
-}
-
-/** Re-use the uploaded audio for 48h; re-upload after it expires. */
-async function ensureAudio(l: Lecture) {
-  if (l.audioFile && l.audioFile.expiresAt - Date.now() > 10 * 60_000) return l.audioFile
-  const audio = await getAudio(l.id)
-  if (!audio.size) throw new Error('No audio was saved for this lecture.')
-  const f = await uploadAndWait(audio, 'audio/mpeg', `quill-${l.id}.mp3`)
-  const audioFile = {
-    name: f.name!,
-    uri: f.uri!,
-    expiresAt: f.expirationTime ? Date.parse(f.expirationTime) : Date.now() + 47 * 3600_000,
-  }
-  await patchLecture(l.id, { audioFile })
-  return audioFile
 }
 
 // ---------------------------------------------------------------- output schema
@@ -89,26 +76,26 @@ type Result = {
 //
 // Cost note: Gemini gives an automatic discount (implicit caching) when a request starts
 // with the same tokens as a recent one. So the request is ordered from most stable to
-// least stable:  system prompt (fixed) → style → lecture audio → memory, marks, feedback.
-// An Improve right after a generate then shares the long system+audio prefix.
+// least stable: system prompt (fixed) → transcript → memory, marks, feedback.
+// Notes never include audio: audio is only sent once, for the parts the free transcript missed.
 
 const MEMORY_WORDS = 350
 
 function systemPrompt(style: string) {
   return `You are Quill, the personal lecture note-taker of a Georgia Tech computer science sophomore.
-You receive the audio of a university lecture (plus, sometimes, slides, the student's live marks and Quill's memory) and produce the notes the student will study from. They must never need to rewrite them.
+You receive the timestamped transcript of a university lecture (plus, sometimes, slides, the student's live marks and Quill's memory) and produce the notes the student will study from. They must never need to rewrite them.
 
 ## Goals
 1. Capture ALL substantive content: every concept, definition, example, argument, formula, algorithm and caveat. Comprehensive, but zero filler.
 2. Make it obvious what matters: what the lecturer emphasized, repeated, wrote down, or said would be on an exam/homework.
 3. Pull out anything the student must DO: readings, assignments, deadlines, exam dates, office hours, announcements.
-4. Be honest: never invent content. If audio is unclear, write your best guess followed by (?). Ignore small talk, logistics noise and audience chatter unless it matters.
+4. Be honest: never invent content. The transcript is machine-made: silently fix obviously misheard words using context, the slides and the course glossary; if the meaning is genuinely unclear, write your best guess followed by (?). Ignore small talk and chatter unless it matters.
 
 ## Who to listen to
-- The lecturer is the primary voice: usually the most continuous speaker, explaining material, often amplified or closer to the mic. Their content is the backbone of the notes.
+- The lecturer is the primary voice: the most continuous speaker, explaining material. Their content is the backbone of the notes. Lines starting "Q:"/"A:" are student questions and the lecturer's answers.
 - Student questions and class discussion matter when the lecturer engages with them: capture the question briefly ("Q from class: …") and the lecturer's answer. During discussion sections, capture the main points raised and any conclusion the lecturer draws.
 - Ignore side conversations near the recorder, chatter before class starts and after it ends, phone/notification sounds, and off-topic remarks. Never put private conversation into the notes.
-- If the audio is too noisy or quiet to follow for a stretch, say so once in ❓ with the timestamp range instead of guessing.
+- If a stretch is marked [inaudible] or doesn't make sense, say so once in ❓ with the timestamp range instead of guessing.
 
 ## The student's personal formatting style (follow it closely)
 ${style}
@@ -135,7 +122,7 @@ One "###" section per topic, in lecture order. Start each section heading with t
 ## ❓ Questions / unclear
 Things that were confusing, contradictory or worth asking the professor or TA about. Include the student's own typed questions.
 
-Timestamps: write them as [mm:ss] (or [h:mm:ss] past one hour), measured from the start of the audio. Add a timestamp to every "###" heading, and inline wherever pointing back to the audio would help.
+Timestamps: write them as [mm:ss] (or [h:mm:ss] past one hour), measured from the start of the recording; reuse the transcript's timestamps. Add a timestamp to every "###" heading, and inline wherever pointing back to the audio would help.
 Do not use LaTeX ($...$). Write math in plain text or code blocks.
 
 ## mindmapMarkdown: a mind map of the lecture (rendered with markmap)
@@ -217,21 +204,26 @@ async function slidesParts(l: Lecture): Promise<Part[]> {
   return parts
 }
 
-// ---------------------------------------------------------------- thinking budget
+// ---------------------------------------------------------------- model calls
 //
-// Thinking tokens are billed like output tokens. Notes need a little reasoning, not a lot.
-// Gemini 2.x takes a token budget; Gemini 3+ takes a level. Unknown aliases try the level
-// first and fall back to a budget, then to the model default, if the API rejects it.
+// Thinking tokens are billed like output tokens. Gemini 2.x takes a token budget; Gemini 3+
+// takes a level. Unknown aliases try the level first and fall back if the API rejects it.
 
-function thinkingOptions(model: string): (GenerateContentConfig['thinkingConfig'] | undefined)[] {
-  if (/gemini-2\.[05]/.test(model)) return [{ thinkingBudget: 1024 }, undefined]
-  return [{ thinkingLevel: ThinkingLevel.LOW }, { thinkingBudget: 1024 }, undefined]
+type Effort = 'minimal' | 'low'
+
+function thinkingOptions(model: string, effort: Effort): (GenerateContentConfig['thinkingConfig'] | undefined)[] {
+  if (/gemini-2\.[05]/.test(model)) {
+    const budget = effort === 'minimal' ? (/pro/.test(model) ? 128 : 0) : 1024
+    return [{ thinkingBudget: budget }, undefined]
+  }
+  const level = effort === 'minimal' ? ThinkingLevel.MINIMAL : ThinkingLevel.LOW
+  return [{ thinkingLevel: level }, { thinkingBudget: effort === 'minimal' ? 0 : 1024 }, undefined]
 }
 
-async function generate(model: string, parts: Part[], system: string) {
+async function callOnce(model: string, parts: Part[], system: string, schema: object, effort: Effort, maxOutputTokens: number) {
   const ai = client()
   let lastErr: unknown
-  for (const thinkingConfig of thinkingOptions(model)) {
+  for (const thinkingConfig of thinkingOptions(model, effort)) {
     try {
       return await ai.models.generateContent({
         model,
@@ -239,9 +231,9 @@ async function generate(model: string, parts: Part[], system: string) {
         config: {
           systemInstruction: system,
           responseMimeType: 'application/json',
-          responseSchema: SCHEMA,
-          temperature: 0.4,
-          maxOutputTokens: 32768,
+          responseSchema: schema,
+          temperature: 0.3,
+          maxOutputTokens,
           ...(thinkingConfig ? { thinkingConfig } : {}),
         },
       })
@@ -254,15 +246,148 @@ async function generate(model: string, parts: Part[], system: string) {
   throw lastErr
 }
 
-function usageOf(model: string, res: GenerateContentResponse): Usage {
-  const u = res.usageMetadata ?? {}
-  return {
-    model,
-    promptTokens: u.promptTokenCount ?? 0,
-    cachedTokens: u.cachedContentTokenCount ?? 0,
-    outputTokens: u.candidatesTokenCount ?? 0,
-    thoughtsTokens: u.thoughtsTokenCount ?? 0,
+/**
+ * One JSON call with exactly one retry if the reply is cut off or isn't valid JSON.
+ * Every attempt's usage is returned so the cost meter stays honest.
+ */
+async function callJson<T>(
+  model: string,
+  kind: 'transcribe' | 'notes',
+  parts: Part[],
+  system: string,
+  schema: object,
+  effort: Effort,
+  maxOutputTokens: number,
+): Promise<{ data: T; usages: Usage[] }> {
+  const usages: Usage[] = []
+  let attempt = parts
+  for (let i = 0; i < 2; i++) {
+    const res = await callOnce(model, attempt, system, schema, effort, maxOutputTokens)
+    const usage = usageOf(model, kind, res)
+    usages.push(usage)
+    addSpend(usage.costUsd ?? 0)
+    const reason = res.candidates?.[0]?.finishReason
+    try {
+      if (!res.text) throw new Error('empty')
+      return { data: JSON.parse(res.text) as T, usages }
+    } catch {
+      if (i === 1) throw new Error(`Gemini's reply was ${reason === 'MAX_TOKENS' ? 'cut off' : 'unreadable'} twice. Try again, or pick another model in Settings.`)
+      attempt = [
+        ...parts,
+        { text: 'IMPORTANT: your previous reply was cut off or was not valid JSON. Reply again as complete, valid JSON. Be more concise if needed.' },
+      ]
+    }
   }
+  throw new Error('unreachable')
+}
+
+// ---------------------------------------------------------------- pass 1: transcript
+
+const TRANSCRIPT_SCHEMA = {
+  type: Type.OBJECT,
+  properties: {
+    segments: {
+      type: Type.ARRAY,
+      items: {
+        type: Type.OBJECT,
+        properties: {
+          t: { type: Type.STRING, description: 'Start time "mm:ss" relative to the start of THIS clip.' },
+          text: { type: Type.STRING },
+        },
+        required: ['t', 'text'],
+        propertyOrdering: ['t', 'text'],
+      },
+    },
+  },
+  required: ['segments'],
+}
+
+const TRANSCRIBE_PROMPT = `You transcribe university lecture audio for a student's note-taking app.
+- Clean verbatim: keep every substantive word; drop filler ("um", "uh", false starts).
+- One segment per paragraph (roughly every 15-40 seconds, or at a change of speaker or topic). t = when the segment starts, relative to the start of this clip.
+- The lecturer is the main speaker. Prefix student questions with "Q: " and the lecturer's reply with "A: ".
+- Skip side conversations near the microphone, pre-/post-class chatter and noise. Never transcribe private conversation.
+- Spell technical terms, code identifiers and names correctly. If a stretch is unintelligible write "[inaudible]".`
+
+const MP3_BYTES_PER_SEC = 4000 // 32 kbps CBR
+const MP3_FRAME = 288 // 16 kHz MPEG-2 Layer III frame at 32 kbps
+
+function sliceMp3(audio: Blob, a: number, b: number) {
+  const at = (s: number) => Math.floor((s * MP3_BYTES_PER_SEC) / MP3_FRAME) * MP3_FRAME
+  return audio.slice(at(a), Math.min(audio.size, at(b) + MP3_FRAME), 'audio/mpeg')
+}
+
+async function toBase64(blob: Blob) {
+  const bytes = new Uint8Array(await blob.arrayBuffer())
+  let bin = ''
+  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000))
+  return btoa(bin)
+}
+
+async function audioPart(clip: Blob, name: string): Promise<Part> {
+  // Small clips go inline (one request); big ones through the Files API.
+  if (clip.size < 6_000_000) return { inlineData: { mimeType: 'audio/mpeg', data: await toBase64(clip) } }
+  const f = await uploadAndWait(clip, 'audio/mpeg', name)
+  return createPartFromUri(f.uri!, 'audio/mpeg')
+}
+
+/** Builds the transcript once: free live text + Gemini only for the gaps. */
+async function ensureTranscript(id: string, step: Progress) {
+  let l = (await getLecture(id))!
+  if (l.transcript?.length) return l.transcript
+
+  const plan = planTranscription(l.loudness ?? [], l.live ?? [], l.durationSec)
+  const model = loadSettings().transcribeModel || 'gemini-flash-lite-latest'
+  const chunks = chunkRanges(plan.ranges)
+  const paid: { t: number; text: string }[] = []
+  const history: HistoryEntry[] = []
+  if (chunks.length) {
+    const audio = await getAudio(id)
+    if (!audio.size) throw new Error('No audio was saved for this lecture.')
+    let done = 0
+    for (const [a, b] of chunks) {
+      step(plan.liveSec > 0 ? `Filling gaps in the free transcript… ${++done}/${chunks.length}` : `Transcribing… ${++done}/${chunks.length}`)
+      const part = await audioPart(sliceMp3(audio, a, b), `quill-${id}-${Math.round(a)}.mp3`)
+      const { data, usages } = await callJson<{ segments: { t: string; text: string }[] }>(
+        model,
+        'transcribe',
+        [part, { text: `This clip is ${fmtTime(b - a)} long.` }],
+        TRANSCRIBE_PROMPT,
+        TRANSCRIPT_SCHEMA,
+        'minimal',
+        24576,
+      )
+      for (const s of data.segments ?? []) {
+        const rel = parseTime(String(s.t).replace(/[[\]]/g, ''))
+        if (s.text?.trim()) paid.push({ t: Math.round((a + (Number.isFinite(rel) ? rel : 0)) * 10) / 10, text: s.text.trim() })
+      }
+      usages.forEach((usage) => history.push({ at: Date.now(), kind: 'transcribe', usage, paidSec: Math.round(b - a) }))
+    }
+  }
+  const transcript = mergeTranscript(l.live ?? [], paid, plan.ranges)
+  const paidSec = plan.ranges.reduce((n, [a, b]) => n + (b - a), 0)
+  l = (await getLecture(id))!
+  await patchLecture(id, {
+    transcript,
+    transcriptStats: { liveSec: Math.round(plan.liveSec), paidSec: Math.round(paidSec), speechSec: plan.speechSec },
+    history: [...l.history, ...history],
+  })
+  return transcript
+}
+
+/** Compact "[mm:ss] text" paragraphs (~30 s each) to keep the notes prompt small. */
+function transcriptText(segs: TranscriptSeg[]) {
+  const out: string[] = []
+  let cur: { t: number; parts: string[] } | null = null
+  for (const s of segs) {
+    if (!cur || s.t - cur.t > 30 || /^(Q|A):/.test(s.text)) {
+      if (cur) out.push(`[${fmtTime(cur.t)}] ${cur.parts.join(' ')}`)
+      cur = { t: s.t, parts: [] }
+    }
+    cur.parts.push(s.text)
+  }
+  if (cur) out.push(`[${fmtTime(cur.t)}] ${cur.parts.join(' ')}`)
+  return out.join('\n')
 }
 
 export type Progress = (step: string) => void
@@ -272,8 +397,10 @@ export type Progress = (step: string) => void
 const running = new Map<string, Promise<void>>()
 export const isRunning = (id: string) => running.has(id)
 
+type RunOpts = { feedback?: string; manual?: boolean; onProgress?: Progress; onLearned?: (prefs: string[]) => void }
+
 /** Generate (or refine) notes for a lecture. Safe to call from any screen. */
-export function processLecture(id: string, opts: { feedback?: string; onProgress?: Progress; onLearned?: (prefs: string[]) => void } = {}) {
+export function processLecture(id: string, opts: RunOpts = {}) {
   const existing = running.get(id)
   if (existing) return existing
   const p = run(id, opts).finally(() => running.delete(id))
@@ -281,21 +408,46 @@ export function processLecture(id: string, opts: { feedback?: string; onProgress
   return p
 }
 
-async function run(
-  id: string,
-  { feedback, onProgress, onLearned }: { feedback?: string; onProgress?: Progress; onLearned?: (prefs: string[]) => void },
-) {
+/** Monthly cap + Pro guard. Auto-runs never overspend; manual runs ask first. */
+async function guard(l: Lecture, manual: boolean) {
+  const s = loadSettings()
+  const needsTranscript = !l.transcript?.length
+  const plan = needsTranscript ? planTranscription(l.loudness ?? [], l.live ?? [], l.durationSec) : { ranges: [] }
+  const transcribeSec = plan.ranges.reduce((n, [a, b]) => n + (b - a), 0)
+  const words = l.transcript ? l.transcript.reduce((n, x) => n + x.text.split(/\s+/).length, 0) : l.durationSec * 2.3
+  const est = estimate({ transcribeSec, transcribeModel: s.transcribeModel, notesModel: s.model, transcriptWords: words })
+
+  if (isPro(s.model)) {
+    if (!manual) return 'Pro model selected. Tap "Make notes" to confirm the higher cost.'
+    if (!confirm(`Pro costs roughly 5× more than Flash. This run ≈ ${fmtUsd(est)}. Continue?`)) return 'cancelled'
+  }
+  if (overCap(est)) {
+    const msg = `Monthly cap: ${fmtUsd(monthSpend())} of $${s.monthlyCap} used.`
+    if (!manual) return `${msg} Tap "Make notes" to go over it.`
+    if (!confirm(`${msg} This run ≈ ${fmtUsd(est)} would go over. Continue anyway?`)) return 'cancelled'
+  }
+  return null
+}
+
+async function run(id: string, { feedback, manual = false, onProgress, onLearned }: RunOpts) {
   const step = (s: string) => onProgress?.(s)
   let l = await getLecture(id)
   if (!l) return
+  const blocked = await guard(l, manual)
+  if (blocked) {
+    if (blocked !== 'cancelled') await patchLecture(id, { status: l.notesMd ? 'ready' : 'saved', error: blocked })
+    return
+  }
   const refining = !!l.notesMd && (!!feedback || l.slides.length > 0)
   await patchLecture(id, { status: 'processing', error: undefined })
   try {
     const settings = loadSettings()
     const model = settings.model || 'gemini-flash-latest'
 
-    step('Uploading audio…')
-    const audio = await ensureAudio(l)
+    // Pass 1 — transcript (free live text; Gemini only for the gaps). Done once per lecture.
+    const transcript = await ensureTranscript(id, step)
+    if (!transcript.length) throw new Error("Quill couldn't hear any speech in this recording.")
+
     l = (await getLecture(id))!
     if (l.slides.length) step('Uploading slides…')
     const slides = await slidesParts(l)
@@ -304,12 +456,17 @@ async function run(
     const fixed = l.courseId ? await getCourse(l.courseId) : undefined
     const number = fixed ? (l.number ?? (await nextLectureNumber(fixed.id, id))) : undefined
 
-    // Stable → variable, for implicit caching (see note above).
-    const parts: Part[] = [createPartFromUri(audio.uri, 'audio/mpeg'), { text: `Lecture recording above (${fmtTime(l.durationSec)} long).` }]
+    // Pass 2 — notes from TEXT. Ordered stable → variable for implicit caching:
+    // system prompt (fixed) → transcript (fixed per lecture) → slides → memory, marks, feedback.
+    const parts: Part[] = [
+      {
+        text: `Lecture transcript (${fmtTime(l.durationSec)} recording; machine transcription, may contain misheard words):\n\n${transcriptText(transcript)}`,
+      },
+    ]
     if (slides.length) {
       parts.push(...slides)
       parts.push({
-        text: 'The lecture slides are attached above. Use them to fix terminology and spelling, fill in formulas, diagrams-in-words and details the audio missed, and align the section structure with the slides. The audio remains the source of truth for what the lecturer emphasized.',
+        text: 'The lecture slides are attached above. Use them to fix terminology and spelling, fill in formulas, diagrams-in-words and details the transcript missed, and align the section structure with the slides. The transcript remains the source of truth for what the lecturer emphasized.',
       })
     }
     parts.push({ text: memoryText(courses, fixed, number, settings.prefs) })
@@ -325,12 +482,8 @@ async function run(
       parts.push({ text: 'There is no feedback yet, so learnedPreferences must be [].' })
     }
 
-    step(refining ? 'Refining notes…' : 'Gemini is listening to the lecture…')
-    const res = await generate(model, parts, systemPrompt(settings.style))
-    const text = res.text
-    if (!text) throw new Error(`Gemini returned no notes (${res.candidates?.[0]?.finishReason ?? 'unknown reason'}).`)
-    const r = JSON.parse(text) as Result
-    const usage = usageOf(model, res)
+    step(refining ? 'Refining notes…' : 'Writing your notes…')
+    const { data: r, usages } = await callJson<Result>(model, 'notes', parts, systemPrompt(settings.style), SCHEMA, 'low', 32768)
 
     step('Filing it in your library…')
     l = (await getLecture(id))!
@@ -362,15 +515,26 @@ async function run(
       mindmapMd: r.mindmapMarkdown,
       history: [
         ...l.history,
-        { at: Date.now(), kind: refining ? 'refine' : 'generate', feedback, slides: l.slides.map((s) => s.name), usage, learned },
+        ...usages.map((usage, i) => ({
+          at: Date.now(),
+          kind: refining ? ('refine' as const) : ('generate' as const),
+          feedback: i === usages.length - 1 ? feedback : undefined,
+          slides: l!.slides.map((s) => s.name),
+          usage,
+          learned: i === usages.length - 1 ? learned : undefined,
+        })),
       ],
     })
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e)
+    l = (await getLecture(id)) ?? l
     await patchLecture(id, { status: l.notesMd ? 'ready' : 'error', error: friendly(msg) })
     throw e
   }
 }
+
+/** Total estimated cost of everything Gemini did for this lecture. */
+export const lectureCost = (l: Lecture) => l.history.reduce((n, h) => n + (h.usage?.costUsd ?? 0), 0)
 
 function clampWords(s: string, max: number) {
   const words = s.split(/(\s+)/)

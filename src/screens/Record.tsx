@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { getCourse, getLecture } from '../lib/db'
 import { useData } from '../lib/hooks'
 import { go } from '../lib/router'
-import { addMark, finishLecture, session } from '../lib/session'
+import { addMark, finishLecture, pauseRecording, resumeRecording, session } from '../lib/session'
 import { fmtTime } from '../lib/util'
 import { toast } from '../components/ui'
 
@@ -76,6 +76,11 @@ export default function Record({ id }: { id: string }) {
         </div>
         <div className="timer">{fmtTime(rec.elapsed)}</div>
         <p className="hint">{session.awake ? 'Screen stays on. Dim it and leave it face up.' : 'Keep the screen on while recording.'}</p>
+        {session.live && !paused && (
+          <p className="caption" aria-live="off">
+            {session.live.interim || session.live.segments.at(-1)?.text || 'Listening for words…'}
+          </p>
+        )}
       </section>
 
       <section className="record-actions">
@@ -108,7 +113,7 @@ export default function Record({ id }: { id: string }) {
       </section>
 
       <footer className="record-foot">
-        <button className="btn ghost round" onClick={() => (paused ? rec.resume() : rec.pause())}>
+        <button className="btn ghost round" onClick={() => (paused ? resumeRecording() : pauseRecording())}>
           {paused ? '▶ Resume' : '❚❚ Pause'}
         </button>
         <button className="btn blue round wide" onClick={finish} disabled={busy}>

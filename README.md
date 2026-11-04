@@ -6,7 +6,10 @@ Record a lecture on your iPhone → get visual, exam-focused notes and a mind ma
 
 ## How it works
 - **Recording:** the browser records the mic to 16 kHz mono MP3 (~14 MB/hour) and saves it to on-device storage (IndexedDB) every 4 seconds. If iOS kills the page, nothing but the last few seconds is lost, and you can tap **Keep recording** to append.
-- **Notes:** the MP3 is uploaded to the Gemini Files API, and one Gemini call returns the class, title, notes (Markdown) and mind map (Markdown → [markmap](https://markmap.js.org)). Prompt lives in `src/lib/gemini.ts`; your personal style lives in Settings.
+- **Transcript (pass 1, once per lecture):** while recording, the phone's free speech recognition writes a live transcript (beta; turns itself off if it clashes with the mic). After you finish, `src/lib/gaps.ts` compares per-second loudness with the live text and sends **only the stretches the free transcript missed** to Gemini Flash-Lite. Silence before and after class is never sent.
+- **Notes (pass 2):** Gemini Flash writes notes + mind map **from the transcript text**, plus the class memory, your preferences and your ⭐ marks. **Improve never re-sends audio.** Thinking is capped; broken replies are retried once.
+- **Memory:** each class keeps a ~350-word memory (lectures, glossary, professor habits, deadlines) and Quill learns standing preferences from your Improve feedback. Both update inside the notes call, so they cost nothing extra.
+- **Cost:** every call's tokens are logged and priced (estimates); Settings shows this month's spend and a monthly cap (default $5) that blocks automatic runs and asks before manual ones. Pro runs ask first.
 - **Storage:** everything (audio, notes, classes) stays on the phone. Your API key is stored locally and only sent to Google.
 - **Export:** "Copy & open Google Docs" (zero setup) or, with a Google OAuth client ID in Settings, one-tap save to Drive as a Google Doc.
 

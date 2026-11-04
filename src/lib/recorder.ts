@@ -15,6 +15,10 @@ export type RecorderState = 'idle' | 'recording' | 'paused'
 export class LectureRecorder {
   state: RecorderState = 'idle'
   level = 0
+  /** Loudness per recorded second (0-1). Continues from a previous session when resuming. */
+  loudness: number[] = []
+  private secSumSq = 0
+  private secN = 0
   onUpdate?: () => void
 
   private ctx?: AudioContext
@@ -41,7 +45,9 @@ export class LectureRecorder {
   }
 
   /** Start (or continue, by passing the existing duration/chunk count). */
-  async start(lectureId: string, offsetSec = 0, startSeq = 0) {
+  async start(lectureId: string, offsetSec = 0, startSeq = 0, loudness: number[] = []) {
+    this.loudness = loudness.slice(0, Math.floor(offsetSec))
+    while (this.loudness.length < Math.floor(offsetSec)) this.loudness.push(0)
     this.lectureId = lectureId
     this.offsetSec = offsetSec
     this.seq = startSeq
@@ -86,6 +92,15 @@ export class LectureRecorder {
     this.level = Math.min(1, Math.sqrt(sum / input.length) * 4)
 
     const pcm = this.downsample(input, this.ctx.sampleRate)
+    for (let i = 0; i < pcm.length; i++) {
+      const v = pcm[i] / 32768
+      this.secSumSq += v * v
+      if (++this.secN === OUT_RATE) {
+        this.loudness.push(Math.min(1, Math.round(Math.sqrt(this.secSumSq / OUT_RATE) * 4 * 1000) / 1000))
+        this.secSumSq = 0
+        this.secN = 0
+      }
+    }
     const mp3 = this.encoder.encodeBuffer(pcm)
     if (mp3.length) this.pending.push(mp3)
     this.samples += pcm.length

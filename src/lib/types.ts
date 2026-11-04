@@ -17,9 +17,19 @@ export type Mark = {
 
 export type LectureStatus = 'recording' | 'saved' | 'processing' | 'ready' | 'error'
 
+/** One piece of transcript. t = seconds from the start of the recording. */
+export type TranscriptSeg = {
+  t: number
+  text: string
+  src: 'live' | 'gemini'
+}
+
 export type Usage = {
   model: string
+  kind?: 'transcribe' | 'notes'
   promptTokens: number
+  audioTokens?: number
+  costUsd?: number
   cachedTokens: number
   outputTokens: number
   thoughtsTokens: number
@@ -27,11 +37,13 @@ export type Usage = {
 
 export type HistoryEntry = {
   at: number
-  kind: 'generate' | 'refine'
+  kind: 'generate' | 'refine' | 'transcribe'
   feedback?: string
   slides?: string[]
   usage?: Usage
   learned?: string[]
+  /** Seconds of audio sent to Gemini (transcription runs). */
+  paidSec?: number
 }
 
 export type Lecture = {
@@ -52,4 +64,12 @@ export type Lecture = {
   slides: { key: string; name: string; type: string; size: number }[]
   history: HistoryEntry[]
   gdocUrl?: string
+  /** Per-second loudness (0-1) captured while recording; used to find speech and trim silence. */
+  loudness?: number[]
+  /** Free live transcript captured on-device while recording (Web Speech API). */
+  live?: { t: number; text: string }[]
+  liveNote?: string
+  /** Final merged transcript (live + Gemini for the gaps). Notes and Improve run on this text. */
+  transcript?: TranscriptSeg[]
+  transcriptStats?: { liveSec: number; paidSec: number; speechSec: number }
 }
