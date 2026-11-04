@@ -1,5 +1,37 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="vane" x1="420" y1="70" x2="170" y2="360" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#8dbbff"/>
+      <stop offset=".5" stop-color="#2e7bff"/>
+      <stop offset="1" stop-color="#1747c8"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="300" cy="210" r="270" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#2e7bff" stop-opacity=".30"/>
+      <stop offset="1" stop-color="#2e7bff" stop-opacity="0"/>
+    </radialGradient>
+    <mask id="cuts" maskUnits="userSpaceOnUse" x="0" y="0" width="512" height="512">
+      <rect width="512" height="512" fill="#fff"/>
+      <g fill="#000">
+        <path d="M200 140 L 268 186 L 254 194 Z"/>
+        <path d="M166 230 L 226 258 L 214 267 Z"/>
+        <path d="M404 194 L 330 206 L 337 193 Z"/>
+        <path d="M344 274 L 284 262 L 293 249 Z"/>
+      </g>
+    </mask>
+  </defs>
   <rect width="512" height="512" rx="112" fill="#06080d"/>
-  <circle cx="256" cy="256" r="150" fill="none" stroke="#2e7bff" stroke-width="22" opacity=".9"/>
-  <circle cx="256" cy="256" r="70" fill="#ffa36c"/>
+  <rect width="512" height="512" rx="112" fill="url(#glow)"/>
+  <!-- ink swoosh -->
+  <path d="M118 414 C 190 380, 250 446, 318 410 S 390 392, 410 400" fill="none" stroke="#ffa36c" stroke-width="13" stroke-linecap="round"/>
+  <!-- feather vane -->
+  <path d="M420 70
+           C 330 76, 226 150, 190 268
+           C 182 294, 178 318, 178 338
+           C 206 326, 236 312, 262 294
+           C 352 232, 406 160, 420 70 Z" fill="url(#vane)" mask="url(#cuts)"/>
+  <!-- shaft -->
+  <path d="M416 78 C 330 160, 230 270, 150 384" fill="none" stroke="#e3edff" stroke-width="7" stroke-linecap="round"/>
+  <!-- nib + ink drop -->
+  <path d="M160 370 L 124 414 L 140 380 Z" fill="#ffa36c"/>
+  <circle cx="122" cy="415" r="10" fill="#ffa36c"/>
 </svg>
