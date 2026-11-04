@@ -82,7 +82,10 @@ export function addSpend(usd: number) {
   } catch {
     /* ignore */
   }
+  window.dispatchEvent(new Event(SPEND_EVENT))
 }
+
+export const SPEND_EVENT = 'quill-spend'
 
 export function overCap(extra = 0) {
   const cap = loadSettings().monthlyCap

@@ -358,3 +358,22 @@ details.card input { margin-top: 12px; }
 .card .btn.ghost.wide-btn { margin-top: 0; margin-bottom: 4px; }
 .hint-box { margin-top: 16px; padding: 10px 12px; border-radius: 12px; background: rgba(255, 163, 108, 0.08); color: var(--orange-hi); }
 .transcript.preview p { font-size: 14.5px; }
+
+/* ---------- live spend progress */
+.spend-progress { margin: 0 0 14px; }
+.spend-progress-top { display: flex; align-items: baseline; gap: 8px; margin-bottom: 10px; }
+.spend-progress-amount { font-size: 22px; font-weight: 700; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+.spend-progress.big .spend-progress-amount { font-size: 40px; }
+.spend-progress-of { color: var(--muted); font-size: 15px; }
+.spend-progress-track { height: 10px; border-radius: 6px; background: var(--surface-2); border: 1px solid var(--line); overflow: hidden; }
+.spend-progress.big .spend-progress-track { height: 14px; border-radius: 8px; }
+.spend-progress-track span {
+  display: block; height: 100%; border-radius: inherit;
+  background: linear-gradient(90deg, var(--blue), var(--blue-hi));
+  transition: width 0.6s cubic-bezier(0.2, 0.9, 0.3, 1), background 0.3s;
+}
+.spend-progress.near .spend-progress-track span { background: linear-gradient(90deg, var(--blue), var(--orange)); }
+.spend-progress.over .spend-progress-track span { background: linear-gradient(90deg, var(--orange), var(--danger)); }
+.spend-progress-foot { display: flex; justify-content: space-between; margin-top: 8px; font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.spend-progress.near .spend-progress-foot span:last-child { color: var(--orange-hi); }
+.spend-progress.over .spend-progress-foot span:last-child { color: var(--danger); }

@@ -1,7 +1,8 @@
 import { listLectures } from '../lib/db'
 import { useData } from '../lib/hooks'
-import { fmtUsd, monthSpend } from '../lib/pricing'
+import { fmtUsd } from '../lib/pricing'
 import { loadSettings } from '../lib/settings'
+import SpendProgress from './SpendProgress'
 import { Sheet } from './ui'
 
 const month = () => new Date().toISOString().slice(0, 7)
@@ -28,14 +29,11 @@ export default function SpendingSheet({ open, onClose }: { open: boolean; onClos
     tok.out += u.outputTokens
     tok.think += u.thoughtsTokens
   }
-  const total = monthSpend()
 
   return (
     <Sheet open={open} onClose={onClose} title="Spending this month">
-      <div className="spend-hero">
-        <b>{fmtUsd(total)}</b>
-        <span>estimated{cap > 0 ? ` · cap $${cap}` : ''}</span>
-      </div>
+      <SpendProgress cap={cap} big />
+      <p className="fine">Estimated · updates live as Gemini runs.</p>
 
       <h3 className="mini-title">Where it went</h3>
       <ul className="confirm-list">

@@ -2,8 +2,9 @@ import { useEffect, useState } from 'react'
 import { TopBar, toast } from '../components/ui'
 import { listModels } from '../lib/gemini'
 import { liveSupported } from '../lib/live'
-import { fmtUsd, isPro, monthSpend } from '../lib/pricing'
+import { isPro } from '../lib/pricing'
 import { go } from '../lib/router'
+import SpendProgress from '../components/SpendProgress'
 import SpendingSheet from '../components/SpendingSheet'
 import { DEFAULT_STYLE, MAX_PREFS, loadSettings, saveSettings, type Settings as S } from '../lib/settings'
 
@@ -67,14 +68,7 @@ export default function Settings() {
 
       <section className="card">
         <h2>💰 Spending</h2>
-        <div className="spend">
-          <div className="spend-bar">
-            <span style={{ width: `${Math.min(100, (100 * monthSpend()) / Math.max(0.01, s.monthlyCap || 1))}%` }} />
-          </div>
-          <p>
-            <b>{fmtUsd(monthSpend())}</b> this month{s.monthlyCap > 0 ? ` of your $${s.monthlyCap} cap` : ' (no cap)'}
-          </p>
-        </div>
+        <SpendProgress cap={s.monthlyCap} />
         <label className="field">
           <span>Monthly cap (USD). Quill asks before going over it. 0 = no cap.</span>
           <input
