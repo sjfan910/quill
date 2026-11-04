@@ -21,7 +21,7 @@ Prices are rough (third-party trackers, not verified against Google's pricing pa
 |---|---|---|---|
 | 4 | ✅ DONE · **Transcript-first pipeline.** Pass 1: audio → timestamped transcript (stored locally). Pass 2: transcript → notes + mind map. **Improve uses the transcript, never re-sends audio.** | Improve drops ~$0.12 → ~$0.01. Also enables search/verification. | [COST] |
 | 5 | ✅ DONE · **Cap thinking tokens.** Minimal for transcription, low for notes. | Thinking is billed as output and is currently unbounded. | [COST] |
-| 6 | ✅ DONE · **Cost meter + monthly cap.** Read `usageMetadata` per call → "This lecture 5¢ · This month $1.80". Cap (default $5) blocks and asks; confirm before Pro runs. | You see and control spend. | [COST] |
+| 6 | ✅ DONE · **Cost meter + monthly cap.** Read `usageMetadata` per call → "This lecture 5¢ · This month $1.80". Cap (default $2) blocks and asks; confirm before Pro runs. | You see and control spend. | [COST] |
 | 7 | ✅ DONE · **Model routing.** Flash-Lite for transcription, Flash for notes; setting to choose. Validate transcript quality on a real lecture before making it default. | ~40–60% cheaper per lecture. | [COST] |
 | 8 | ✅ DONE · **Prompt order static → dynamic** (system prompt, style, memory, then transcript/audio, then marks). | Free implicit-cache hits when they occur; no extra infra. | [COST] |
 | 9 | ✅ DONE · **Trim leading/trailing silence** before upload (not mid-recording, keeps timestamps valid). | ~5–10% fewer audio tokens. | [COST] |

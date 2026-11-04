@@ -77,7 +77,7 @@ export default function Settings() {
             min={0}
             step={1}
             value={s.monthlyCap}
-            onChange={(e) => set({ monthlyCap: Math.max(0, Number(e.target.value) || 0) })}
+            onChange={(e) => set({ monthlyCap: Math.max(0, Number(e.target.value) || 0), capCustomized: true })}
           />
         </label>
         <button className="btn ghost wide-btn" onClick={() => setSpendOpen(true)}>

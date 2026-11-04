@@ -22,6 +22,8 @@ export type Settings = {
   transcribeModel: string
   /** Monthly spending cap in USD (estimated). */
   monthlyCap: number
+  /** True once the user has set the cap themselves (protects it from default changes). */
+  capCustomized?: boolean
 }
 
 const KEY = 'quill.settings'
@@ -33,7 +35,7 @@ const defaults: Settings = {
   prefs: [],
   liveTranscribe: true,
   transcribeModel: 'gemini-flash-lite-latest',
-  monthlyCap: 5,
+  monthlyCap: 2,
 }
 
 export const MAX_PREFS = 15
@@ -50,7 +52,10 @@ export function addPrefs(learned: string[]) {
 
 export function loadSettings(): Settings {
   try {
-    return { ...defaults, ...JSON.parse(localStorage.getItem(KEY) || '{}') }
+    const saved = JSON.parse(localStorage.getItem(KEY) || '{}') as Partial<Settings>
+    // The default cap used to be $5. Anyone still on that untouched default moves to the new one.
+    if (saved.monthlyCap === 5 && !saved.capCustomized) saved.monthlyCap = defaults.monthlyCap
+    return { ...defaults, ...saved }
   } catch {
     return { ...defaults }
   }
