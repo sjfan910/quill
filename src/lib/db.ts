@@ -147,3 +147,40 @@ export async function audioStats(lectureId: string) {
   const nextSeq = rows.length ? rows[rows.length - 1].seq + 1 : 0
   return { bytes, nextSeq, durationSec: (bytes * 8) / 32000 } // 32 kbps CBR
 }
+
+/** Another class already using this code (case-insensitive), if any. */
+export async function courseWithCode(code: string, exceptId?: string) {
+  const norm = normalizeCode(code).toUpperCase()
+  return (await listCourses()).find((c) => c.id !== exceptId && c.code.toUpperCase() === norm)
+}
+
+export async function renameCourse(id: string, code: string, name: string) {
+  const c = await getCourse(id)
+  if (!c) return
+  await saveCourse({ ...c, code: normalizeCode(code), name: name.trim() })
+}
+
+/** Move every lecture from `fromId` into `intoId` (numbered after its existing ones), then delete `fromId`. */
+export async function mergeCourses(fromId: string, intoId: string) {
+  const d = await db()
+  const from = await d.get('courses', fromId)
+  const into = await d.get('courses', intoId)
+  if (!from || !into) return
+  const moving = (await d.getAllFromIndex('lectures', 'byCourse', fromId)).sort((a, b) => (a.number ?? 0) - (b.number ?? 0) || a.createdAt - b.createdAt)
+  let next = await nextLectureNumber(intoId)
+  for (const l of moving) await d.put('lectures', { ...l, courseId: intoId, number: next++ })
+  // Keep the target's memory; fall back to the merged class's if the target has none yet.
+  await d.put('courses', { ...into, name: into.name || from.name, memory: into.memory || from.memory, memoryUpdatedAt: Date.now() })
+  await d.delete('courses', fromId)
+  changed()
+}
+
+/** File unsorted lectures under a class, numbered after its existing ones. */
+export async function fileUnsorted(intoId: string) {
+  const d = await db()
+  const loose = (await d.getAll('lectures')).filter((l) => !l.courseId && l.status !== 'recording').sort((a, b) => a.createdAt - b.createdAt)
+  let next = await nextLectureNumber(intoId)
+  for (const l of loose) await d.put('lectures', { ...l, courseId: intoId, number: next++ })
+  changed()
+  return loose.length
+}

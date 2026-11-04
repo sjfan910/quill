@@ -377,3 +377,5 @@ details.card input { margin-top: 12px; }
 .spend-progress-foot { display: flex; justify-content: space-between; margin-top: 8px; font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
 .spend-progress.near .spend-progress-foot span:last-child { color: var(--orange-hi); }
 .spend-progress.over .spend-progress-foot span:last-child { color: var(--danger); }
+
+.fine.top { margin: 0 0 14px; }
