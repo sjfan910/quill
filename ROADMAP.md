@@ -11,9 +11,9 @@ Prices are rough (third-party trackers, not verified against Google's pricing pa
 
 | # | Update | Why | Owner |
 |---|---|---|---|
-| 1 | **Sanitize mind-map output.** markmap renders raw HTML (`html: true`); a malicious mind map read the Gemini key from localStorage in testing. Disable HTML in the markmap transformer and/or DOMPurify node content. | Confirmed key-theft path (low likelihood: needs injected HTML via slides/audio → Gemini). | [CRIT] |
-| 2 | **Content-Security-Policy via `vercel.json`.** Allow scripts from self (+ `accounts.google.com` for Docs export), `connect-src` only Google APIs. | Turns any future XSS from "steal key" into "nothing". | [CRIT] |
-| 3 | **Restrict the Gemini API key + budget alert.** Google Cloud Console → key restrictions: Generative Language API only, HTTP referrer = the Vercel domain. Billing → budget alert. | Limits damage if the key ever leaks. | [YOU] (checklist in README by [CRIT]) |
+| 1 | ✅ DONE · **Sanitize mind-map output.** markmap renders raw HTML (`html: true`); a malicious mind map read the Gemini key from localStorage in testing. Disable HTML in the markmap transformer and/or DOMPurify node content. | Confirmed key-theft path (low likelihood: needs injected HTML via slides/audio → Gemini). | [CRIT] |
+| 2 | ✅ DONE · **Content-Security-Policy via `vercel.json`.** Allow scripts from self (+ `accounts.google.com` for Docs export), `connect-src` only Google APIs. | Turns any future XSS from "steal key" into "nothing". | [CRIT] |
+| 3 | ✅ Checklist in README · **Restrict the Gemini API key + budget alert.** Google Cloud Console → key restrictions: Generative Language API only, HTTP referrer = the Vercel domain. Billing → budget alert. | Limits damage if the key ever leaks. | [YOU] (checklist in README by [CRIT]) |
 
 ## P0 · Cost (biggest savings)
 

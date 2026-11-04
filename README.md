@@ -14,6 +14,22 @@ Record a lecture on your iPhone → get visual, exam-focused notes and a mind ma
 - Install: open the site in Safari → Share → **Add to Home Screen**.
 - Web apps can't record with the screen locked. Quill holds the screen awake while recording; dim it and leave it face up.
 
+## Security
+
+- **Key handling:** the Gemini key is stored only on your phone (localStorage) and sent only to Google, in a request header.
+- **Untrusted AI output:** notes and mind maps are sanitized before rendering (DOMPurify; raw HTML disabled in markmap).
+- **Content-Security-Policy** (`vercel.json`): the page can only load its own scripts and only talk to Google's APIs, so even injected code couldn't send your key elsewhere.
+
+### 2-minute key lockdown (do this once)
+1. Open [Google Cloud Console → Credentials](https://console.cloud.google.com/apis/credentials) and pick the project your AI Studio key lives in.
+2. Click your API key.
+   - **Application restrictions → Websites** → add `https://YOUR-QUILL-DOMAIN.vercel.app/*`
+   - **API restrictions → Restrict key** → tick **Generative Language API** only → Save.
+3. [Billing → Budgets & alerts](https://console.cloud.google.com/billing/budgets) → create a budget (e.g. $10/month) with email alerts at 50%, 90%, 100%.
+4. If you ever think the key leaked: delete it there, make a new one in [AI Studio](https://aistudio.google.com/apikey), paste it into Quill's Settings.
+
+Note: a website restriction stops other sites from using your key, but someone with a script can fake it, so the budget alert is your real safety net. Budgets alert you; they don't hard-stop spending.
+
 ## Develop
 ```bash
 npm install
