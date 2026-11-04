@@ -4,6 +4,9 @@ export type Course = {
   name: string // e.g. "Intro to Discrete Math"
   color: string
   createdAt: number
+  /** Compact running memory of the class (Markdown, ~350 words max), maintained by Gemini. */
+  memory?: string
+  memoryUpdatedAt?: number
 }
 
 export type Mark = {
@@ -14,11 +17,21 @@ export type Mark = {
 
 export type LectureStatus = 'recording' | 'saved' | 'processing' | 'ready' | 'error'
 
+export type Usage = {
+  model: string
+  promptTokens: number
+  cachedTokens: number
+  outputTokens: number
+  thoughtsTokens: number
+}
+
 export type HistoryEntry = {
   at: number
   kind: 'generate' | 'refine'
   feedback?: string
   slides?: string[]
+  usage?: Usage
+  learned?: string[]
 }
 
 export type Lecture = {

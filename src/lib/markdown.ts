@@ -33,3 +33,8 @@ code,pre{font-family:'Courier New',monospace;font-size:10pt;background:#f4f4f4}
 function escapeHtml(s: string) {
   return s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!)
 }
+
+/** Memory is line-oriented: keep single line breaks. */
+export function renderMemory(md: string) {
+  return DOMPurify.sanitize(marked.parse(md, { async: false, breaks: true }))
+}

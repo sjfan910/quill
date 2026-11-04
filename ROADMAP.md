@@ -20,10 +20,10 @@ Prices are rough (third-party trackers, not verified against Google's pricing pa
 | # | Update | Why | Owner |
 |---|---|---|---|
 | 4 | **Transcript-first pipeline.** Pass 1: audio → timestamped transcript (stored locally). Pass 2: transcript → notes + mind map. **Improve uses the transcript, never re-sends audio.** | Improve drops ~$0.12 → ~$0.01. Also enables search/verification. | [COST] |
-| 5 | **Cap thinking tokens.** Minimal for transcription, low for notes. | Thinking is billed as output and is currently unbounded. | [COST] |
+| 5 | ✅ DONE · **Cap thinking tokens.** Minimal for transcription, low for notes. | Thinking is billed as output and is currently unbounded. | [COST] |
 | 6 | **Cost meter + monthly cap.** Read `usageMetadata` per call → "This lecture 5¢ · This month $1.80". Cap (default $5) blocks and asks; confirm before Pro runs. | You see and control spend. | [COST] |
 | 7 | **Model routing.** Flash-Lite for transcription, Flash for notes; setting to choose. Validate transcript quality on a real lecture before making it default. | ~40–60% cheaper per lecture. | [COST] |
-| 8 | **Prompt order static → dynamic** (system prompt, style, memory, then transcript/audio, then marks). | Free implicit-cache hits when they occur; no extra infra. | [COST] |
+| 8 | ✅ DONE · **Prompt order static → dynamic** (system prompt, style, memory, then transcript/audio, then marks). | Free implicit-cache hits when they occur; no extra infra. | [COST] |
 | 9 | **Trim leading/trailing silence** before upload (not mid-recording, keeps timestamps valid). | ~5–10% fewer audio tokens. | [COST] |
 
 ## P1 · Reliability / never lose work
@@ -40,8 +40,8 @@ Prices are rough (third-party trackers, not verified against Google's pricing pa
 
 | # | Update | Why | Owner |
 |---|---|---|---|
-| 15 | **"You" memory** (~300 tokens): durable preferences learned from Improve feedback, editable in Settings. Updated inside the same call (no extra request). | Stop paying to repeat the same feedback. | [COST] |
-| 16 | **Course memory** (~500–800 tokens per class): lecture one-liners, glossary, professor habits, deadlines. Updated in the notes call, compacted when long. | Continuity ("builds on L6"), consistent jargon, better class detection. ≈0.1¢/lecture. | [COST] |
+| 15 | ✅ DONE · **"You" memory** (~300 tokens): durable preferences learned from Improve feedback, editable in Settings. Updated inside the same call (no extra request). | Stop paying to repeat the same feedback. | [COST] |
+| 16 | ✅ DONE · **Course memory** (~500–800 tokens per class): lecture one-liners, glossary, professor habits, deadlines. Updated in the notes call, compacted when long. | Continuity ("builds on L6"), consistent jargon, better class detection. ≈0.1¢/lecture. | [COST] |
 | 17 | **Learn the class schedule** (weekday + time → preselect class). | Removes the one remaining decision before recording. | [CRIT] |
 | 18 | **Version history / undo** for Improve and Remake. | Improve currently overwrites. | [CRIT] |
 | 19 | **Transcript view + search** across lectures (after #4). | Verify what was said; find anything. | [CRIT] |

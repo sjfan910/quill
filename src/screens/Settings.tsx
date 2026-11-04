@@ -2,12 +2,13 @@ import { useEffect, useState } from 'react'
 import { TopBar, toast } from '../components/ui'
 import { listModels } from '../lib/gemini'
 import { go } from '../lib/router'
-import { DEFAULT_STYLE, loadSettings, saveSettings, type Settings as S } from '../lib/settings'
+import { DEFAULT_STYLE, MAX_PREFS, loadSettings, saveSettings, type Settings as S } from '../lib/settings'
 
 export default function Settings() {
   const [s, setS] = useState<S>(loadSettings)
   const [models, setModels] = useState<string[]>([])
   const [usage, setUsage] = useState('')
+  const [newPref, setNewPref] = useState('')
 
   const set = (patch: Partial<S>) => {
     const next = { ...s, ...patch }
@@ -57,6 +58,40 @@ export default function Settings() {
             </option>
           ))}
         </select>
+      </section>
+
+      <section className="card">
+        <h2>🧠 What Quill knows about you</h2>
+        <p className="fine">Learned from your "Improve" feedback and applied to every lecture. Remove anything that's wrong.</p>
+        {s.prefs.length === 0 ? (
+          <p className="empty small">Nothing yet. Give feedback with ✨ Improve and Quill will remember what sticks.</p>
+        ) : (
+          <ul className="prefs">
+            {s.prefs.map((p, i) => (
+              <li key={p}>
+                <span>{p}</span>
+                <button className="icon-btn small" aria-label={`Forget: ${p}`} onClick={() => set({ prefs: s.prefs.filter((_, j) => j !== i) })}>
+                  ✕
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+        <form
+          className="note-form"
+          onSubmit={(e) => {
+            e.preventDefault()
+            const v = newPref.trim()
+            if (!v) return
+            set({ prefs: [...s.prefs.filter((p) => p.toLowerCase() !== v.toLowerCase()), v].slice(-MAX_PREFS) })
+            setNewPref('')
+          }}
+        >
+          <input value={newPref} onChange={(e) => setNewPref(e.target.value)} placeholder="Add one, e.g. Always include a worked example" />
+          <button className="btn ghost" type="submit" disabled={!newPref.trim()}>
+            Add
+          </button>
+        </form>
       </section>
 
       <section className="card">

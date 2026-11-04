@@ -288,3 +288,21 @@ details.card input { margin-top: 12px; }
 .row-btns .btn { flex: 1; }
 .card .btn.ghost { margin-top: 10px; }
 .row-btns .btn.ghost { margin-top: 0; }
+
+/* ---------- memory */
+.memory-chip {
+  width: 100%; display: flex; align-items: center; gap: 14px; text-align: left;
+  padding: 14px; margin-bottom: 18px; border-radius: 16px;
+  background: linear-gradient(135deg, rgba(46, 123, 255, 0.16), rgba(255, 163, 108, 0.08));
+  border: 1px solid rgba(46, 123, 255, 0.35);
+}
+.memory-chip > span:first-child { font-size: 24px; }
+.notes.memory { font-size: 15px; margin-bottom: 16px; }
+.notes.memory h2 { font-size: 15px; margin: 18px 0 6px; padding-top: 12px; color: var(--blue-hi); }
+.notes.memory h2:first-child { border-top: 0; padding-top: 0; margin-top: 0; }
+.prefs { list-style: none; padding: 0; margin: 4px 0 12px; }
+.prefs li { display: flex; align-items: center; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--line); font-size: 15px; }
+.prefs li span { flex: 1; }
+.icon-btn.small { width: 30px; height: 30px; font-size: 13px; background: var(--surface-2); }
+.empty.small { padding: 8px 0; font-size: 14px; text-align: left; }
+.card .note-form .btn.ghost { margin-top: 0; }

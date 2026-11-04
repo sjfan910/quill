@@ -14,6 +14,8 @@ export type Settings = {
   model: string
   style: string
   googleClientId: string
+  /** Durable preferences learned from Improve feedback ("memory about you"). */
+  prefs: string[]
 }
 
 const KEY = 'quill.settings'
@@ -22,6 +24,19 @@ const defaults: Settings = {
   model: 'gemini-flash-latest',
   style: DEFAULT_STYLE,
   googleClientId: '',
+  prefs: [],
+}
+
+export const MAX_PREFS = 15
+
+/** Merge newly learned preferences, de-duplicated, newest kept, capped. */
+export function addPrefs(learned: string[]) {
+  const s = loadSettings()
+  const seen = new Set(s.prefs.map((p) => p.toLowerCase().trim()))
+  const fresh = learned.map((p) => p.trim()).filter((p) => p && p.length < 200 && !seen.has(p.toLowerCase()))
+  if (!fresh.length) return []
+  saveSettings({ ...s, prefs: [...s.prefs, ...fresh].slice(-MAX_PREFS) })
+  return fresh
 }
 
 export function loadSettings(): Settings {

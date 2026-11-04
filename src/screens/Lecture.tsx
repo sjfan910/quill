@@ -45,7 +45,11 @@ export default function Lecture({ id }: { id: string }) {
   function generate(feedback?: string) {
     if (!loadSettings().apiKey) return go('/settings')
     setStep('Starting…')
-    processLecture(id, { feedback, onProgress: setStep })
+    processLecture(id, {
+      feedback,
+      onProgress: setStep,
+      onLearned: (prefs) => setTimeout(() => toast(`🧠 Learned: ${prefs[0]}`), 2800),
+    })
       .then(() => toast('✨ Notes ready'))
       .catch(() => {})
   }
