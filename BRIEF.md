@@ -86,7 +86,7 @@ Every step is manual, and the result still isn't in the format I actually study 
      view notes + mind map                                     └───────────────────┘
 ```
 
-Key decisions:
+Key decisions (v1 picks: PWA, Gemini audio understanding direct, markmap):
 1. **App type**: PWA (fastest to build, but iOS can stop recording when the screen locks) vs **React Native / Expo** (real background recording, one codebase for iOS + Android) vs native.
 2. **Transcription**: cloud API (accurate, cheap per hour, needs internet) vs on-device Whisper (private, offline, heavier on battery).
 3. **Note generation**: LLM with a **style profile** built from samples of my own notes.
