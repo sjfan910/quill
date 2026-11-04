@@ -89,4 +89,5 @@ export function overCap(extra = 0) {
   return cap > 0 && monthSpend() + extra > cap
 }
 
-export const fmtUsd = (usd: number) => (usd < 0.995 ? `${Math.max(0, Math.round(usd * 100))}¢` : `$${usd.toFixed(2)}`)
+export const fmtUsd = (usd: number) =>
+  usd > 0 && usd < 0.005 ? '<1¢' : usd < 0.995 ? `${Math.max(0, Math.round(usd * 100))}¢` : `$${usd.toFixed(2)}`

@@ -89,18 +89,21 @@ export default function Settings() {
 
       <section className="card">
         <h2>🎙️ Transcription</h2>
-        <label className="toggle">
-          <input type="checkbox" checked={s.liveTranscribe} onChange={(e) => set({ liveTranscribe: e.target.checked })} />
-          <span>
-            <b>Free live transcription</b> (beta)
-            <br />
-            <small>
-              {liveSupported()
-                ? 'Your phone transcribes while recording; Gemini only fills the gaps. Turns itself off if it clashes with the mic.'
-                : 'Not available in this browser.'}
-            </small>
-          </span>
-        </label>
+        <div className="choice">
+          <button className={s.liveTranscribe ? 'on' : ''} onClick={() => set({ liveTranscribe: true })} disabled={!liveSupported()}>
+            <b>Free</b>
+            <small>Your phone transcribes live. Rougher; Gemini fills gaps. ≈3¢ per lecture.</small>
+          </button>
+          <button className={!s.liveTranscribe ? 'on' : ''} onClick={() => set({ liveTranscribe: false })}>
+            <b>Accurate</b>
+            <small>Gemini transcribes the audio. ≈8¢ more per hour.</small>
+          </button>
+        </div>
+        <p className="fine">
+          {liveSupported()
+            ? 'On Free, any lecture can still be upgraded later: Transcript → ✨ Make it accurate.'
+            : 'Free live transcription is not available in this browser.'}
+        </p>
         <label className="field">
           <span>Model for the parts the free transcript missed</span>
           <select value={s.transcribeModel} onChange={(e) => set({ transcribeModel: e.target.value })}>

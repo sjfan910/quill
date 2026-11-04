@@ -3,7 +3,7 @@ import { Sheet, toast } from '../components/ui'
 import { deleteLecture, getAudio, getCourse, getLecture, listCourses, nextLectureNumber, patchLecture, putBlob } from '../lib/db'
 import { canDirectExport, copyRich, exportToGoogleDoc, preloadGoogle } from '../lib/gdocs'
 import { isRunning, lectureCost, processLecture } from '../lib/gemini'
-import { fmtUsd } from '../lib/pricing'
+import { estimate, fmtUsd } from '../lib/pricing'
 import { useData } from '../lib/hooks'
 import { renderForDocs, renderNotes } from '../lib/markdown'
 import { go } from '../lib/router'
@@ -44,11 +44,12 @@ export default function Lecture({ id }: { id: string }) {
   const working = l.status === 'processing' || isRunning(id)
   const heading = course ? `${course.code} · Lecture ${l.number ?? '?'}` : 'Unsorted'
 
-  function generate(feedback?: string) {
+  function generate(feedback?: string, retranscribe = false) {
     if (!loadSettings().apiKey) return go('/settings')
     setStep('Starting…')
     processLecture(id, {
       feedback,
+      retranscribe,
       manual: true,
       onProgress: setStep,
       onLearned: (prefs) => setTimeout(() => toast(`🧠 Learned: ${prefs[0]}`), 2800),
@@ -131,6 +132,14 @@ export default function Lecture({ id }: { id: string }) {
           ) : tab === 'text' ? (
             <Transcript
               l={l}
+              onAccurate={() => {
+                const s = loadSettings()
+                const est = estimate({ transcribeSec: l.durationSec, transcribeModel: s.transcribeModel, notesModel: s.model, transcriptWords: l.durationSec * 2.3 })
+                if (confirm(`Have Gemini re-transcribe the audio accurately and remake the notes from it? About ${fmtUsd(est)} for this lecture.`)) {
+                  setTab('notes')
+                  generate(undefined, true)
+                }
+              }}
               onSeek={(t) => {
                 if (audioRef.current) {
                   audioRef.current.currentTime = t
@@ -169,7 +178,7 @@ export default function Lecture({ id }: { id: string }) {
 
 // ------------------------------------------------------------------ Transcript
 
-function Transcript({ l, onSeek }: { l: LectureT; onSeek: (t: number) => void }) {
+function Transcript({ l, onSeek, onAccurate }: { l: LectureT; onSeek: (t: number) => void; onAccurate: () => void }) {
   const segs = l.transcript ?? []
   const st = l.transcriptStats
   const freePct = st && st.liveSec + st.paidSec > 0 ? Math.round((100 * st.liveSec) / (st.liveSec + st.paidSec)) : 0
@@ -182,6 +191,26 @@ function Transcript({ l, onSeek }: { l: LectureT; onSeek: (t: number) => void })
           {l.liveNote ? ` · ${l.liveNote}` : ''}
         </p>
       )}
+      {segs.length > 0 && (
+        <div className="transcript-actions">
+          <button
+            className="btn ghost"
+            onClick={() =>
+              navigator.clipboard.writeText(transcriptPlain(l)).then(
+                () => toast('📋 Transcript copied'),
+                () => toast('Copy failed'),
+              )
+            }
+          >
+            📋 Copy transcript
+          </button>
+          {segs.some((s) => s.src === 'live') && (
+            <button className="btn ghost" onClick={onAccurate}>
+              ✨ Make it accurate
+            </button>
+          )}
+        </div>
+      )}
       {segs.length === 0 && <p className="empty">No transcript yet.</p>}
       {segs.map((s, i) => (
         <p key={i} className={s.src === 'gemini' ? 'paid' : ''}>
@@ -193,6 +222,11 @@ function Transcript({ l, onSeek }: { l: LectureT; onSeek: (t: number) => void })
       ))}
     </div>
   )
+}
+
+function transcriptPlain(l: LectureT) {
+  const head = `${l.title} · ${fmtDate(l.createdAt)} · ${fmtDuration(l.durationSec)}`
+  return [head, '', ...(l.transcript ?? []).map((s) => `[${fmtTime(s.t)}] ${s.text}`)].join('\n')
 }
 
 // ------------------------------------------------------------------ Improve

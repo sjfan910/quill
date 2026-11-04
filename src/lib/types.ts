@@ -67,7 +67,7 @@ export type Lecture = {
   /** Per-second loudness (0-1) captured while recording; used to find speech and trim silence. */
   loudness?: number[]
   /** Free live transcript captured on-device while recording (Web Speech API). */
-  live?: { t: number; text: string }[]
+  live?: { t: number; text: string; c?: number }[]
   liveNote?: string
   /** Final merged transcript (live + Gemini for the gaps). Notes and Improve run on this text. */
   transcript?: TranscriptSeg[]

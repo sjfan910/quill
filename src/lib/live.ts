@@ -11,7 +11,7 @@ type SR = {
   continuous: boolean
   interimResults: boolean
   lang: string
-  onresult: ((e: { resultIndex: number; results: ArrayLike<{ isFinal: boolean; 0: { transcript: string } }> }) => void) | null
+  onresult: ((e: { resultIndex: number; results: ArrayLike<{ isFinal: boolean; 0: { transcript: string; confidence?: number } }> }) => void) | null
   onend: (() => void) | null
   onerror: ((e: { error: string }) => void) | null
   start(): void
@@ -28,7 +28,7 @@ function ctor(): SRCtor | undefined {
 export const liveSupported = () => !!ctor()
 
 export class LiveTranscriber {
-  segments: { t: number; text: string }[] = []
+  segments: { t: number; text: string; c?: number }[] = []
   interim = ''
   failed: string | null = null
 
@@ -46,7 +46,7 @@ export class LiveTranscriber {
     this.onUpdate = onUpdate
   }
 
-  start(existing: { t: number; text: string }[] = []) {
+  start(existing: { t: number; text: string; c?: number }[] = []) {
     const C = ctor()
     if (!C) {
       this.failed = 'unsupported'
@@ -71,7 +71,8 @@ export class LiveTranscriber {
         if (!this.startTimes.has(i)) this.startTimes.set(i, Math.max(0, this.now() - 1.5))
         if (res.isFinal) {
           const text = res[0].transcript.trim()
-          if (text) this.segments.push({ t: Math.round(this.startTimes.get(i)! * 10) / 10, text })
+          const c = res[0].confidence
+          if (text) this.segments.push({ t: Math.round(this.startTimes.get(i)! * 10) / 10, text, ...(c ? { c: Math.round(c * 100) / 100 } : {}) })
           this.interim = ''
         } else {
           this.interim = res[0].transcript

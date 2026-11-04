@@ -332,11 +332,14 @@ async function audioPart(clip: Blob, name: string): Promise<Part> {
 }
 
 /** Builds the transcript once: free live text + Gemini only for the gaps. */
-async function ensureTranscript(id: string, step: Progress) {
+/** Free live text is used unless the user asked for an accurate (Gemini-only) transcript. */
+const liveFor = (l: Lecture, accurate: boolean) => (accurate ? [] : (l.live ?? []))
+
+async function ensureTranscript(id: string, step: Progress, accurate: boolean) {
   let l = (await getLecture(id))!
   if (l.transcript?.length) return l.transcript
 
-  const plan = planTranscription(l.loudness ?? [], l.live ?? [], l.durationSec)
+  const plan = planTranscription(l.loudness ?? [], liveFor(l, accurate), l.durationSec)
   const model = loadSettings().transcribeModel || 'gemini-flash-lite-latest'
   const chunks = chunkRanges(plan.ranges)
   const paid: { t: number; text: string }[] = []
@@ -364,7 +367,7 @@ async function ensureTranscript(id: string, step: Progress) {
       usages.forEach((usage) => history.push({ at: Date.now(), kind: 'transcribe', usage, paidSec: Math.round(b - a) }))
     }
   }
-  const transcript = mergeTranscript(l.live ?? [], paid, plan.ranges)
+  const transcript = mergeTranscript(liveFor(l, accurate), paid, plan.ranges)
   const paidSec = plan.ranges.reduce((n, [a, b]) => n + (b - a), 0)
   l = (await getLecture(id))!
   await patchLecture(id, {
@@ -397,7 +400,7 @@ export type Progress = (step: string) => void
 const running = new Map<string, Promise<void>>()
 export const isRunning = (id: string) => running.has(id)
 
-type RunOpts = { feedback?: string; manual?: boolean; onProgress?: Progress; onLearned?: (prefs: string[]) => void }
+type RunOpts = { feedback?: string; manual?: boolean; retranscribe?: boolean; onProgress?: Progress; onLearned?: (prefs: string[]) => void }
 
 /** Generate (or refine) notes for a lecture. Safe to call from any screen. */
 export function processLecture(id: string, opts: RunOpts = {}) {
@@ -409,10 +412,10 @@ export function processLecture(id: string, opts: RunOpts = {}) {
 }
 
 /** Monthly cap + Pro guard. Auto-runs never overspend; manual runs ask first. */
-async function guard(l: Lecture, manual: boolean) {
+async function guard(l: Lecture, manual: boolean, retranscribe: boolean, accurate: boolean) {
   const s = loadSettings()
-  const needsTranscript = !l.transcript?.length
-  const plan = needsTranscript ? planTranscription(l.loudness ?? [], l.live ?? [], l.durationSec) : { ranges: [] }
+  const needsTranscript = !l.transcript?.length || retranscribe
+  const plan = needsTranscript ? planTranscription(l.loudness ?? [], liveFor(l, accurate), l.durationSec) : { ranges: [] }
   const transcribeSec = plan.ranges.reduce((n, [a, b]) => n + (b - a), 0)
   const words = l.transcript ? l.transcript.reduce((n, x) => n + x.text.split(/\s+/).length, 0) : l.durationSec * 2.3
   const est = estimate({ transcribeSec, transcribeModel: s.transcribeModel, notesModel: s.model, transcriptWords: words })
@@ -429,23 +432,24 @@ async function guard(l: Lecture, manual: boolean) {
   return null
 }
 
-async function run(id: string, { feedback, manual = false, onProgress, onLearned }: RunOpts) {
+async function run(id: string, { feedback, manual = false, retranscribe = false, onProgress, onLearned }: RunOpts) {
   const step = (s: string) => onProgress?.(s)
   let l = await getLecture(id)
   if (!l) return
-  const blocked = await guard(l, manual)
+  const accurate = retranscribe || !loadSettings().liveTranscribe
+  const blocked = await guard(l, manual, retranscribe, accurate)
   if (blocked) {
     if (blocked !== 'cancelled') await patchLecture(id, { status: l.notesMd ? 'ready' : 'saved', error: blocked })
     return
   }
-  const refining = !!l.notesMd && (!!feedback || l.slides.length > 0)
-  await patchLecture(id, { status: 'processing', error: undefined })
+  const refining = !retranscribe && !!l.notesMd && (!!feedback || l.slides.length > 0)
+  await patchLecture(id, { status: 'processing', error: undefined, ...(retranscribe ? { transcript: undefined, transcriptStats: undefined } : {}) })
   try {
     const settings = loadSettings()
     const model = settings.model || 'gemini-flash-latest'
 
     // Pass 1 — transcript (free live text; Gemini only for the gaps). Done once per lecture.
-    const transcript = await ensureTranscript(id, step)
+    const transcript = await ensureTranscript(id, step, accurate)
     if (!transcript.length) throw new Error("Quill couldn't hear any speech in this recording.")
 
     l = (await getLecture(id))!

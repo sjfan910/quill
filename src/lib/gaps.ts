@@ -20,6 +20,10 @@ const WORDS_PER_SEC = 2.5 // typical lecture speaking rate
 const MIN_SPEECH_IN_WINDOW = 6 // seconds of speech before a window can count as a gap
 const MIN_WORD_RATE = 0.8 // words per speaking-second below which the live text is missing
 const PAD = 3
+/** Recognizer confidence below this means the phrase is probably misheard: treat it as missing. */
+export const LOW_CONFIDENCE = 0.5
+type LiveSeg = { t: number; text: string; c?: number }
+const trusted = (s: LiveSeg) => !(s.c !== undefined && s.c > 0 && s.c < LOW_CONFIDENCE)
 
 function percentile(xs: number[], p: number) {
   if (!xs.length) return 0
@@ -40,7 +44,7 @@ export function speechMask(loudness: number[]) {
 }
 
 /** Spread each live phrase's words over the seconds it plausibly covered. */
-function wordsPerSecond(live: { t: number; text: string }[], duration: number) {
+function wordsPerSecond(live: LiveSeg[], duration: number) {
   const wps = new Array(Math.ceil(duration) + 1).fill(0)
   const sorted = live.slice().sort((a, b) => a.t - b.t)
   sorted.forEach((seg, i) => {
@@ -54,7 +58,8 @@ function wordsPerSecond(live: { t: number; text: string }[], duration: number) {
   return wps
 }
 
-export function planTranscription(loudness: number[], live: { t: number; text: string }[], duration: number) {
+export function planTranscription(loudness: number[], allLive: LiveSeg[], duration: number) {
+  const live = allLive.filter(trusted)
   const dur = Math.max(duration, loudness.length)
   const speaking = speechMask(loudness)
   const speechSec = speaking.filter(Boolean).length
@@ -109,13 +114,13 @@ export function chunkRanges(ranges: Range[], max = 1500): Range[] {
 
 /** Keep live text outside the gaps; Gemini's text replaces everything inside them. */
 export function mergeTranscript(
-  live: { t: number; text: string }[],
+  live: LiveSeg[],
   paid: { t: number; text: string }[],
   ranges: Range[],
 ) {
   const inGap = (t: number) => ranges.some(([a, b]) => t >= a && t < b)
   return [
-    ...live.filter((s) => !inGap(s.t)).map((s) => ({ ...s, src: 'live' as const })),
+    ...live.filter((s) => !inGap(s.t)).map((s) => ({ t: s.t, text: s.text, src: 'live' as const })),
     ...paid.map((s) => ({ ...s, src: 'gemini' as const })),
   ].sort((a, b) => a.t - b.t)
 }
