@@ -110,6 +110,11 @@ export default function Lecture({ id }: { id: string }) {
           <button className="big-btn blue" onClick={() => generate()}>
             ✨ Make notes
           </button>
+          {audioUrl && (
+            <button className="big-btn ghost" onClick={() => setSheet('accurate')}>
+              🎧 Make notes with an accurate transcript
+            </button>
+          )}
           <button
             className="big-btn ghost"
             onClick={() =>
@@ -140,6 +145,7 @@ export default function Lecture({ id }: { id: string }) {
           ) : tab === 'text' ? (
             <Transcript
               l={l}
+              hasAudio={!!audioUrl}
               onAccurate={() => setSheet('accurate')}
               onSeek={(t) => {
                 if (audioRef.current) {
@@ -159,12 +165,18 @@ export default function Lecture({ id }: { id: string }) {
       <div className="dock">
         {audioUrl && <audio ref={audioRef} src={audioUrl} controls preload="metadata" />}
         {l.notesMd && !working && (
-          <div className="dock-actions">
+          <div className="dock-actions three">
             <button className="btn ghost" onClick={() => setSheet('improve')}>
               ✨ Improve
             </button>
+            <button
+              className="btn ghost"
+              onClick={() => (audioUrl ? setSheet('accurate') : toast('The recording is only on the phone that recorded this lecture.'))}
+            >
+              🎧 Accurate
+            </button>
             <button className="btn blue" onClick={() => setSheet('export')}>
-              ↗ Google Docs
+              ↗ Docs
             </button>
           </div>
         )}
@@ -192,7 +204,7 @@ export default function Lecture({ id }: { id: string }) {
 
 // ------------------------------------------------------------------ Transcript
 
-function Transcript({ l, onSeek, onAccurate }: { l: LectureT; onSeek: (t: number) => void; onAccurate: () => void }) {
+function Transcript({ l, hasAudio, onSeek, onAccurate }: { l: LectureT; hasAudio: boolean; onSeek: (t: number) => void; onAccurate: () => void }) {
   const segs = l.transcript ?? []
   const st = l.transcriptStats
   const freePct = st && st.liveSec + st.paidSec > 0 ? Math.round((100 * st.liveSec) / (st.liveSec + st.paidSec)) : 0
@@ -218,9 +230,9 @@ function Transcript({ l, onSeek, onAccurate }: { l: LectureT; onSeek: (t: number
           >
             📋 Copy transcript
           </button>
-          {segs.some((s) => s.src === 'live') && (
+          {hasAudio && (
             <button className="btn ghost" onClick={onAccurate}>
-              ✨ Make it accurate
+              {segs.some((s) => s.src === 'live') ? '✨ Make it accurate' : '🎧 Re-transcribe'}
             </button>
           )}
         </div>
@@ -264,7 +276,7 @@ function TranscriptPreview({ l }: { l: LectureT }) {
         </p>
       ))}
       {segs.some((s) => s.src === 'live') && (
-        <p className="fine hint-box">Looks rough? When the notes are ready, open Transcript → ✨ Make it accurate.</p>
+        <p className="fine hint-box">Looks rough? When the notes are ready, tap 🎧 Accurate at the bottom.</p>
       )}
     </div>
   )
@@ -294,7 +306,7 @@ function AccurateSheet({ open, onClose, lecture: l, onSend }: { open: boolean; o
         </li>
         <li>
           <span>Then</span>
-          <b>notes remade from the new transcript</b>
+          <b>{l.notesMd ? 'notes remade from the new transcript' : 'notes made from it'}</b>
         </li>
         <li>
           <span>Estimated cost</span>
@@ -309,7 +321,7 @@ function AccurateSheet({ open, onClose, lecture: l, onSend }: { open: boolean; o
         </li>
       </ul>
       {overCap && <p className="error">This goes over your monthly cap.</p>}
-      <p className="fine">The free transcript is replaced. Silence before and after class isn't sent.</p>
+      <p className="fine">The whole recording is transcribed by Gemini (any free transcript is replaced). Silence before and after class isn't sent.</p>
       <button className="big-btn blue" onClick={onSend}>
         ✨ Send to Gemini
       </button>

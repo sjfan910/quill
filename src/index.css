@@ -423,3 +423,5 @@ details.card input { margin-top: 12px; }
   background: var(--surface-2); border: 1px solid var(--line);
 }
 .tile-more:active { background: var(--line); color: var(--text); }
+
+.dock-actions.three .btn { padding: 15px 8px; font-size: 14.5px; }
