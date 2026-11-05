@@ -10,7 +10,8 @@ Record a lecture on your iPhone → get visual, exam-focused notes and a mind ma
 - **Notes (pass 2):** Gemini Flash writes notes + mind map **from the transcript text**, plus the class memory, your preferences and your ⭐ marks. **Improve never re-sends audio.** Thinking is capped; broken replies are retried once.
 - **Memory:** each class keeps a ~350-word memory (lectures, glossary, professor habits, deadlines) and Quill learns standing preferences from your Improve feedback. Both update inside the notes call, so they cost nothing extra.
 - **Cost:** every call's tokens are logged and priced (estimates); Settings shows this month's spend and a monthly cap (default $2) that blocks automatic runs and asks before manual ones. Pro runs ask first.
-- **Storage:** everything (audio, notes, classes) stays on the phone. Your API key is stored locally and only sent to Google.
+- **Accounts (optional):** with Supabase configured (see [SETUP.md](SETUP.md)) you sign in with Google, notes/classes/memory/settings sync across devices, and the Gemini key lives only on the server (`api/gemini.ts`), which verifies your session, checks an email allow-list, logs exact usage and enforces the monthly cap plus a hard ceiling.
+- **Storage:** audio always stays on the phone that recorded it. Without an account, everything stays on the device and your key is stored locally and only sent to Google.
 - **Export:** "Copy & open Google Docs" (zero setup) or, with a Google OAuth client ID in Settings, one-tap save to Drive as a Google Doc.
 
 ## iPhone notes

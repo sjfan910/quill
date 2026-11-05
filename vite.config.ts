@@ -22,7 +22,11 @@ export default defineConfig({
           { src: 'icon.svg', sizes: 'any', type: 'image/svg+xml' },
         ],
       },
-      workbox: { globPatterns: ['**/*.{js,css,html,svg,png}'], maximumFileSizeToCacheInBytes: 4_000_000 },
+      workbox: {
+        globPatterns: ['**/*.{js,css,html,svg,png}'],
+        maximumFileSizeToCacheInBytes: 4_000_000,
+        navigateFallbackDenylist: [/^\/api\//],
+      },
     }),
   ],
 })

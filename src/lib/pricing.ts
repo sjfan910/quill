@@ -1,4 +1,4 @@
-import type { GenerateContentResponse } from '@google/genai'
+import type { GenResponse } from './transport'
 import { loadSettings } from './settings'
 import type { Usage } from './types'
 
@@ -20,7 +20,7 @@ const CACHED_FRACTION = 0.25
 export const rateFor = (model: string) => RATES.find(([re]) => re.test(model))?.[1] ?? FALLBACK
 export const isPro = (model: string) => /pro/.test(model)
 
-export function usageOf(model: string, kind: Usage['kind'], res: GenerateContentResponse): Usage {
+export function usageOf(model: string, kind: Usage['kind'], res: GenResponse): Usage {
   const u = res.usageMetadata ?? {}
   const audioTokens = (u.promptTokensDetails ?? []).filter((d) => d.modality === 'AUDIO').reduce((n, d) => n + (d.tokenCount ?? 0), 0)
   const usage: Usage = {
@@ -86,6 +86,18 @@ export function addSpend(usd: number) {
 }
 
 export const SPEND_EVENT = 'quill-spend'
+
+/** Signed in: replace this month's figure with the server's ledger total. */
+export function syncSpend(serverTotalUsd: number) {
+  const all = read()
+  all[month()] = serverTotalUsd
+  try {
+    localStorage.setItem(KEY, JSON.stringify(all))
+  } catch {
+    /* ignore */
+  }
+  window.dispatchEvent(new Event(SPEND_EVENT))
+}
 
 export function overCap(extra = 0) {
   const cap = loadSettings().monthlyCap

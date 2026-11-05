@@ -394,3 +394,19 @@ details.card input { margin-top: 12px; }
 .spend-progress.over .spend-progress-foot span:last-child { color: var(--danger); }
 
 .fine.top { margin: 0 0 14px; }
+
+/* ---------- login */
+.login { display: flex; flex-direction: column; justify-content: space-between; min-height: 100dvh; }
+.login-center { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 24px 0; }
+.login-logo { width: 132px; height: 132px; border-radius: 22%; box-shadow: 0 0 0 1px rgba(46, 123, 255, 0.35), 0 18px 60px -12px rgba(46, 123, 255, 0.65); margin-bottom: 26px; }
+.login .logo { font-size: 44px; }
+.login-tag { color: var(--muted); font-size: 17px; margin: 6px 0 26px; }
+.login-points { list-style: none; padding: 0; margin: 0; text-align: left; display: grid; gap: 10px; font-size: 15px; }
+.login-actions { display: grid; gap: 14px; padding-bottom: 12px; }
+.big-btn.google { background: #fff; color: #1f1f1f; gap: 12px; }
+.link-btn { color: var(--muted); font-size: 15px; padding: 10px; text-decoration: underline; text-underline-offset: 3px; }
+
+/* ---------- account card */
+.account-row { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
+.avatar { width: 42px; height: 42px; border-radius: 50%; display: grid; place-items: center; font-weight: 800; background: linear-gradient(135deg, var(--blue), var(--orange)); color: #fff; flex: 0 0 42px; }
+.account .row-btns { margin-top: 0; }

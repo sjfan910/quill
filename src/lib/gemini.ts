@@ -1,25 +1,28 @@
-import { GoogleGenAI, ThinkingLevel, Type, createPartFromUri, type GenerateContentConfig, type Part } from '@google/genai'
 import { findOrCreateCourse, getAudio, getBlob, getCourse, getLecture, listCourses, nextLectureNumber, patchLecture, saveCourse } from './db'
 import { chunkRanges, mergeTranscript, planTranscription } from './gaps'
-import { addSpend, estimate, fmtUsd, isPro, monthSpend, overCap, usageOf } from './pricing'
+import { addSpend, estimate, fmtUsd, isPro, monthSpend, overCap, syncSpend, usageOf } from './pricing'
 import { addPrefs, loadSettings } from './settings'
 import type { Course, HistoryEntry, Lecture, TranscriptSeg, Usage } from './types'
+import {
+  ThinkingLevel,
+  Type,
+  createPartFromUri,
+  generateContent,
+  getFile,
+  listModels as listModelsRaw,
+  textOf,
+  uploadFile,
+  type Part,
+  type ThinkingConfig,
+} from './transport'
 import { fmtTime, parseTime } from './util'
 
-function client() {
-  const { apiKey } = loadSettings()
-  if (!apiKey) throw new Error('Add your Gemini API key in Settings first.')
-  return new GoogleGenAI({ apiKey })
-}
-
 export async function listModels() {
-  const ai = client()
   const out: string[] = []
-  const pager = await ai.models.list({ config: { pageSize: 100 } })
-  for await (const m of pager) {
+  for (const m of await listModelsRaw()) {
     const name = (m.name ?? '').replace(/^models\//, '')
     if (!name.startsWith('gemini')) continue
-    if (!m.supportedActions?.includes('generateContent')) continue
+    if (!m.supportedGenerationMethods?.includes('generateContent')) continue
     if (/(image|tts|live|audio|embedding|robotics|computer)/.test(name)) continue
     out.push(name)
   }
@@ -29,11 +32,10 @@ export async function listModels() {
 // ---------------------------------------------------------------- uploads
 
 async function uploadAndWait(blob: Blob, mimeType: string, displayName: string) {
-  const ai = client()
-  let f = await ai.files.upload({ file: blob, config: { mimeType, displayName } })
+  let f = await uploadFile(blob, mimeType, displayName)
   for (let i = 0; i < 120 && f.state === 'PROCESSING'; i++) {
     await new Promise((r) => setTimeout(r, 2000))
-    f = await ai.files.get({ name: f.name! })
+    f = await getFile(f.name)
   }
   if (f.state === 'FAILED') throw new Error(`Gemini could not process ${displayName}.`)
   return f
@@ -211,7 +213,7 @@ async function slidesParts(l: Lecture): Promise<Part[]> {
 
 type Effort = 'minimal' | 'low'
 
-function thinkingOptions(model: string, effort: Effort): (GenerateContentConfig['thinkingConfig'] | undefined)[] {
+function thinkingOptions(model: string, effort: Effort): (ThinkingConfig | undefined)[] {
   if (/gemini-2\.[05]/.test(model)) {
     const budget = effort === 'minimal' ? (/pro/.test(model) ? 128 : 0) : 1024
     return [{ thinkingBudget: budget }, undefined]
@@ -220,23 +222,27 @@ function thinkingOptions(model: string, effort: Effort): (GenerateContentConfig[
   return [{ thinkingLevel: level }, { thinkingBudget: effort === 'minimal' ? 0 : 1024 }, undefined]
 }
 
-async function callOnce(model: string, parts: Part[], system: string, schema: object, effort: Effort, maxOutputTokens: number) {
-  const ai = client()
+type Meta = { lectureId?: string; overCapOk?: boolean }
+
+async function callOnce(model: string, kind: 'transcribe' | 'notes', parts: Part[], system: string, schema: object, effort: Effort, maxOutputTokens: number, meta: Meta) {
   let lastErr: unknown
   for (const thinkingConfig of thinkingOptions(model, effort)) {
     try {
-      return await ai.models.generateContent({
+      return await generateContent(
         model,
-        contents: [{ role: 'user', parts }],
-        config: {
-          systemInstruction: system,
-          responseMimeType: 'application/json',
-          responseSchema: schema,
-          temperature: 0.3,
-          maxOutputTokens,
-          ...(thinkingConfig ? { thinkingConfig } : {}),
+        {
+          contents: [{ role: 'user', parts }],
+          systemInstruction: { parts: [{ text: system }] },
+          generationConfig: {
+            responseMimeType: 'application/json',
+            responseSchema: schema,
+            temperature: 0.3,
+            maxOutputTokens,
+            ...(thinkingConfig ? { thinkingConfig } : {}),
+          },
         },
-      })
+        { kind, ...meta },
+      )
     } catch (e) {
       lastErr = e
       // Only retry when the model rejected the thinking setting; anything else is a real error.
@@ -258,18 +264,22 @@ async function callJson<T>(
   schema: object,
   effort: Effort,
   maxOutputTokens: number,
+  meta: Meta = {},
 ): Promise<{ data: T; usages: Usage[] }> {
   const usages: Usage[] = []
   let attempt = parts
   for (let i = 0; i < 2; i++) {
-    const res = await callOnce(model, attempt, system, schema, effort, maxOutputTokens)
+    const { res, monthSpend: serverSpend } = await callOnce(model, kind, attempt, system, schema, effort, maxOutputTokens, meta)
     const usage = usageOf(model, kind, res)
     usages.push(usage)
-    addSpend(usage.costUsd ?? 0)
+    // Signed in: the server's ledger is the truth. Otherwise count it on this device.
+    if (serverSpend !== undefined) syncSpend(serverSpend)
+    else addSpend(usage.costUsd ?? 0)
     const reason = res.candidates?.[0]?.finishReason
+    const text = textOf(res)
     try {
-      if (!res.text) throw new Error('empty')
-      return { data: JSON.parse(res.text) as T, usages }
+      if (!text) throw new Error('empty')
+      return { data: JSON.parse(text) as T, usages }
     } catch {
       if (i === 1) throw new Error(`Gemini's reply was ${reason === 'MAX_TOKENS' ? 'cut off' : 'unreadable'} twice. Try again, or pick another model in Settings.`)
       attempt = [
@@ -326,7 +336,8 @@ async function toBase64(blob: Blob) {
 
 async function audioPart(clip: Blob, name: string): Promise<Part> {
   // Small clips go inline (one request); big ones through the Files API.
-  if (clip.size < 6_000_000) return { inlineData: { mimeType: 'audio/mpeg', data: await toBase64(clip) } }
+  // Inline when small (and under the ~4.5 MB server request limit once base64'd); else Files API.
+  if (clip.size < 2_500_000) return { inlineData: { mimeType: 'audio/mpeg', data: await toBase64(clip) } }
   const f = await uploadAndWait(clip, 'audio/mpeg', name)
   return createPartFromUri(f.uri!, 'audio/mpeg')
 }
@@ -335,7 +346,7 @@ async function audioPart(clip: Blob, name: string): Promise<Part> {
 /** Free live text is used unless the user asked for an accurate (Gemini-only) transcript. */
 const liveFor = (l: Lecture, accurate: boolean) => (accurate ? [] : (l.live ?? []))
 
-async function ensureTranscript(id: string, step: Progress, accurate: boolean) {
+async function ensureTranscript(id: string, step: Progress, accurate: boolean, meta: Meta) {
   let l = (await getLecture(id))!
   if (l.transcript?.length) return l.transcript
 
@@ -359,6 +370,7 @@ async function ensureTranscript(id: string, step: Progress, accurate: boolean) {
         TRANSCRIPT_SCHEMA,
         'minimal',
         24576,
+        meta,
       )
       for (const s of data.segments ?? []) {
         const rel = parseTime(String(s.t).replace(/[[\]]/g, ''))
@@ -449,7 +461,8 @@ async function run(id: string, { feedback, manual = false, retranscribe = false,
     const model = settings.model || 'gemini-flash-latest'
 
     // Pass 1 — transcript (free live text; Gemini only for the gaps). Done once per lecture.
-    const transcript = await ensureTranscript(id, step, accurate)
+    const meta: Meta = { lectureId: id, overCapOk: manual }
+    const transcript = await ensureTranscript(id, step, accurate, meta)
     if (!transcript.length) throw new Error("Quill couldn't hear any speech in this recording.")
 
     l = (await getLecture(id))!
@@ -487,7 +500,7 @@ async function run(id: string, { feedback, manual = false, retranscribe = false,
     }
 
     step(refining ? 'Refining notes…' : 'Writing your notes…')
-    const { data: r, usages } = await callJson<Result>(model, 'notes', parts, systemPrompt(settings.style), SCHEMA, 'low', 32768)
+    const { data: r, usages } = await callJson<Result>(model, 'notes', parts, systemPrompt(settings.style), SCHEMA, 'low', 32768, meta)
 
     step('Filing it in your library…')
     l = (await getLecture(id))!

@@ -56,6 +56,14 @@ Prices are rough (third-party trackers, not verified against Google's pricing pa
 | 23 | Settings note on free-tier vs paid data use (free tier may be used to improve Google products). | Informed choice. | [CRIT] |
 | 24 | Bump/patch low-severity `npm audit` items (katex via markmap). | Hygiene; unused code path. | [CRIT] |
 
+## Accounts (done)
+
+- ✅ Google sign-in (Supabase Auth), email allow-list on the server
+- ✅ Gemini key server-side only (`api/gemini.ts`); usage ledger + server-enforced cap and hard ceiling
+- ✅ Sync of classes, lectures (text), memory, settings, monthly spend across devices; audio stays on the recording device
+- ✅ Replaces #12 (Drive backup): the account is the backup for notes
+- ⏳ Owner setup: follow SETUP.md
+
 ## Later
 
 - "Ask my course" / exam review using local search + only relevant snippets sent to Gemini.

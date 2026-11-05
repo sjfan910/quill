@@ -4,6 +4,7 @@ import { useData } from '../lib/hooks'
 import { go } from '../lib/router'
 import { beginLecture, session } from '../lib/session'
 import { loadSettings } from '../lib/settings'
+import { useSession } from '../lib/supabase'
 import { toast } from '../components/ui'
 
 export default function Home() {
@@ -11,7 +12,8 @@ export default function Home() {
   const lectures = useData(listLectures) ?? []
   const [courseId, setCourseId] = useState<string>('')
   const [starting, setStarting] = useState(false)
-  const hasKey = !!loadSettings().apiKey
+  const signedIn = !!useSession()
+  const hasKey = signedIn || !!loadSettings().apiKey
 
   const waiting = lectures.filter((l) => l.status === 'saved' || l.status === 'error')
   const unsorted = lectures.filter((l) => !l.courseId && l.status !== 'recording')

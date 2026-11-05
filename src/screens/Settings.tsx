@@ -5,6 +5,8 @@ import { liveSupported } from '../lib/live'
 import { isPro } from '../lib/pricing'
 import { go } from '../lib/router'
 import SpendProgress from '../components/SpendProgress'
+import { cloudEnabled, setLocalOnly, signInWithGoogle, signOut, useSession } from '../lib/supabase'
+import { syncNow, useSyncStatus } from '../lib/sync'
 import SpendingSheet from '../components/SpendingSheet'
 import { DEFAULT_STYLE, MAX_PREFS, loadSettings, saveSettings, type Settings as S } from '../lib/settings'
 
@@ -14,6 +16,8 @@ export default function Settings() {
   const [usage, setUsage] = useState('')
   const [newPref, setNewPref] = useState('')
   const [spendOpen, setSpendOpen] = useState(false)
+  const account = useSession()
+  const sync = useSyncStatus()
 
   const set = (patch: Partial<S>) => {
     const next = { ...s, ...patch }
@@ -40,6 +44,60 @@ export default function Settings() {
     <main className="page settings">
       <TopBar back={{ label: 'Home', onClick: () => go('/') }} title="Settings" />
 
+      {cloudEnabled && (
+        <section className="card account">
+          {account ? (
+            <>
+              <div className="account-row">
+                <div className="avatar">{(account.user.email ?? '?')[0].toUpperCase()}</div>
+                <div className="row-main">
+                  <span className="row-title">{account.user.email}</span>
+                  <span className="row-sub">
+                    {sync.state === 'syncing'
+                      ? 'Syncing…'
+                      : sync.state === 'error'
+                        ? `⚠️ ${sync.error}`
+                        : sync.at
+                          ? `✓ Synced ${agoText(sync.at)}`
+                          : 'Not synced yet'}
+                  </span>
+                </div>
+              </div>
+              <div className="row-btns">
+                <button className="btn ghost" onClick={() => void syncNow()} disabled={sync.state === 'syncing'}>
+                  ↻ Sync now
+                </button>
+                <button
+                  className="btn ghost"
+                  onClick={async () => {
+                    await signOut()
+                    toast('Signed out. Notes stay on this device.')
+                  }}
+                >
+                  Sign out
+                </button>
+              </div>
+              <p className="fine">🔒 Your Gemini key lives on Quill's server, not on this device. Audio stays on the phone that recorded it.</p>
+            </>
+          ) : (
+            <>
+              <h2>Account</h2>
+              <p className="fine top">Sign in to see your notes on every device and keep your key off this phone.</p>
+              <button
+                className="big-btn blue"
+                onClick={() => {
+                  setLocalOnly(false)
+                  void signInWithGoogle()
+                }}
+              >
+                Continue with Google
+              </button>
+            </>
+          )}
+        </section>
+      )}
+
+      {!account && (
       <section className="card">
         <h2>Gemini API key</h2>
         <input type="password" autoComplete="off" value={s.apiKey} onChange={(e) => set({ apiKey: e.target.value.trim() })} placeholder="Paste your key" />
@@ -53,6 +111,7 @@ export default function Settings() {
         </div>
         <p className="fine">Stays on this phone. It's only sent to Google.</p>
       </section>
+      )}
 
       <section className="card">
         <h2>Notes model</h2>
@@ -83,7 +142,11 @@ export default function Settings() {
         <button className="btn ghost wide-btn" onClick={() => setSpendOpen(true)}>
           See breakdown &amp; real bill ›
         </button>
-        <p className="fine">Estimated from token counts on this phone. Your Google billing page is the source of truth.</p>
+        <p className="fine">
+          {account
+            ? "Logged by Quill's server for every call, across all your devices (estimated prices). Google's billing page is the source of truth."
+            : 'Estimated from token counts on this phone. Your Google billing page is the source of truth.'}
+        </p>
       </section>
       <SpendingSheet open={spendOpen} onClose={() => setSpendOpen(false)} />
 
@@ -175,4 +238,11 @@ export default function Settings() {
       <p className="fine center">Quill · everything is stored on this device{usage && ` · ${usage}`}</p>
     </main>
   )
+}
+
+function agoText(t: number) {
+  const s = Math.round((Date.now() - t) / 1000)
+  if (s < 60) return 'just now'
+  if (s < 3600) return `${Math.floor(s / 60)} min ago`
+  return new Date(t).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
 }

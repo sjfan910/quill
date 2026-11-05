@@ -10,6 +10,7 @@ import { renderForDocs, renderNotes } from '../lib/markdown'
 import { go } from '../lib/router'
 import { continueLecture } from '../lib/session'
 import { loadSettings } from '../lib/settings'
+import { session as currentSession } from '../lib/supabase'
 import type { Lecture as LectureT } from '../lib/types'
 import { fmtDate, fmtDuration, fmtTime } from '../lib/util'
 
@@ -46,7 +47,7 @@ export default function Lecture({ id }: { id: string }) {
   const heading = course ? `${course.code} · Lecture ${l.number ?? '?'}` : 'Unsorted'
 
   function generate(feedback?: string, retranscribe = false) {
-    if (!loadSettings().apiKey) return go('/settings')
+    if (!loadSettings().apiKey && !currentSession()) return go('/settings')
     setStep('Starting…')
     processLecture(id, {
       feedback,

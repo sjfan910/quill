@@ -4,6 +4,7 @@ import { toast } from '../components/ui'
 import { LiveTranscriber } from './live'
 import { LectureRecorder, keepAwake } from './recorder'
 import { loadSettings, saveSettings } from './settings'
+import { session as currentSession } from './supabase'
 import type { Lecture, Mark } from './types'
 
 /** The one active recording, shared across screens. */
@@ -148,7 +149,7 @@ export async function finishLecture() {
     chunkCount: rec.chunkCount,
     ...(live?.failed && live.failed !== 'unsupported' ? { liveNote: `Free live transcription stopped (${live.failed}); Gemini will cover the rest.` } : {}),
   })
-  if (loadSettings().apiKey) processLecture(lectureId).catch(() => {})
+  if (loadSettings().apiKey || currentSession()) processLecture(lectureId).catch(() => {})
   return lectureId
 }
 

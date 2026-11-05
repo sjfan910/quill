@@ -38,6 +38,8 @@ const defaults: Settings = {
   monthlyCap: 2,
 }
 
+import { markSettingsDirty } from './dirty'
+
 export const MAX_PREFS = 15
 
 /** Merge newly learned preferences, de-duplicated, newest kept, capped. */
@@ -60,10 +62,17 @@ export function loadSettings(): Settings {
     return { ...defaults }
   }
 }
-export function saveSettings(s: Settings) {
+export function saveSettings(s: Settings, opts: { fromServer?: boolean } = {}) {
   try {
     localStorage.setItem(KEY, JSON.stringify(s))
   } catch {
     /* ignore */
   }
+  if (!opts.fromServer) markSettingsDirty()
+  window.dispatchEvent(new Event(SETTINGS_EVENT))
 }
+
+export const SETTINGS_EVENT = 'quill-settings'
+
+/** Settings that follow your account. The API key and Google client ID stay on each device. */
+export const SYNCED_SETTINGS = ['model', 'style', 'prefs', 'liveTranscribe', 'transcribeModel', 'monthlyCap', 'capCustomized'] as const
