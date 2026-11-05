@@ -410,3 +410,6 @@ details.card input { margin-top: 12px; }
 .account-row { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
 .avatar { width: 42px; height: 42px; border-radius: 50%; display: grid; place-items: center; font-weight: 800; background: linear-gradient(135deg, var(--blue), var(--orange)); color: #fff; flex: 0 0 42px; }
 .account .row-btns { margin-top: 0; }
+
+.login-actions .big-btn + .big-btn { margin-top: 0; }
+.guest-note { margin: -4px 0 0; }

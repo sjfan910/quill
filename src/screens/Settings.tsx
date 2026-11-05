@@ -81,8 +81,8 @@ export default function Settings() {
             </>
           ) : (
             <>
-              <h2>Account</h2>
-              <p className="fine top">Sign in to see your notes on every device and keep your key off this phone.</p>
+              <h2>👤 Guest mode</h2>
+              <p className="fine top">Your notes are saved on this device only. Sign in to see them on every device and keep your key off this phone.</p>
               <button
                 className="big-btn blue"
                 onClick={() => {

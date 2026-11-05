@@ -39,14 +39,15 @@ export default function Login({ onSkip }: { onSkip: () => void }) {
           {busy ? 'Opening Google…' : 'Continue with Google'}
         </button>
         <button
-          className="link-btn"
+          className="big-btn ghost"
           onClick={() => {
             setLocalOnly(true)
             onSkip()
           }}
         >
-          Use without an account (this device only)
+          Continue as guest
         </button>
+        <p className="fine center guest-note">Guest notes stay on this device. You can sign in later from Settings.</p>
       </div>
     </main>
   )
