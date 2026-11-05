@@ -5,6 +5,7 @@ import { go } from '../lib/router'
 import { beginLecture, session } from '../lib/session'
 import { loadSettings } from '../lib/settings'
 import { useSession } from '../lib/supabase'
+import EditClassSheet from '../components/EditClassSheet'
 import { toast } from '../components/ui'
 
 export default function Home() {
@@ -12,6 +13,7 @@ export default function Home() {
   const lectures = useData(listLectures) ?? []
   const [courseId, setCourseId] = useState<string>('')
   const [starting, setStarting] = useState(false)
+  const [editing, setEditing] = useState<string | null>(null)
   const signedIn = !!useSession()
   const hasKey = signedIn || !!loadSettings().apiKey
 
@@ -96,11 +98,16 @@ export default function Home() {
             {courses.map((c) => {
               const n = lectures.filter((l) => l.courseId === c.id).length
               return (
-                <button key={c.id} className="tile" style={{ ['--accent' as string]: c.color }} onClick={() => go(`/course/${c.id}`)}>
-                  <span className="tile-code">{c.code}</span>
-                  <span className="tile-name">{c.name || ' '}</span>
-                  <span className="tile-count">{n === 1 ? '1 lecture' : `${n} lectures`}</span>
-                </button>
+                <div key={c.id} className="tile-wrap">
+                  <button className="tile" style={{ ['--accent' as string]: c.color }} onClick={() => go(`/course/${c.id}`)}>
+                    <span className="tile-code">{c.code}</span>
+                    <span className="tile-name">{c.name || ' '}</span>
+                    <span className="tile-count">{n === 1 ? '1 lecture' : `${n} lectures`}</span>
+                  </button>
+                  <button className="tile-more" aria-label={`Edit ${c.code}`} onClick={() => setEditing(c.id)}>
+                    ⋯
+                  </button>
+                </div>
               )
             })}
             {unsorted.length > 0 && (
@@ -113,6 +120,19 @@ export default function Home() {
           </div>
         )}
       </section>
+      {(() => {
+        const c = courses.find((x) => x.id === editing)
+        return (
+          <EditClassSheet
+            open={!!c}
+            onClose={() => setEditing(null)}
+            courseId={c?.id}
+            initialCode={c?.code ?? ''}
+            initialName={c?.name ?? ''}
+            count={c ? lectures.filter((l) => l.courseId === c.id).length : 0}
+          />
+        )
+      })()}
     </main>
   )
 }
