@@ -4,6 +4,9 @@ import { putChunk } from './db'
 const OUT_RATE = 16000 // speech-quality mono; ~14 MB per hour at 32 kbps
 const KBPS = 32
 const FLUSH_EVERY_SEC = 4
+/** Audio missing for longer than this (screen off, call, app switch) counts as a gap. */
+const GAP_SEC = 1.5
+const MAX_GAP_FILL_SEC = 4 * 3600
 
 export type RecorderState = 'idle' | 'recording' | 'paused'
 
@@ -20,6 +23,13 @@ export class LectureRecorder {
   private secSumSq = 0
   private secN = 0
   onUpdate?: () => void
+  /** Called after a stretch without audio was filled with silence: [from, to] in recording seconds. */
+  onGap?: (gap: { from: number; to: number }) => void
+  /** True when iOS stopped the mic and it needs a tap to come back. */
+  stalled = false
+  gaps: { from: number; to: number }[] = []
+  private lastWall = 0 // Date.now() of the last audio received
+  private stallTimer?: number
 
   private ctx?: AudioContext
   private stream?: MediaStream
@@ -37,6 +47,16 @@ export class LectureRecorder {
 
   get elapsed() {
     return this.offsetSec + this.samples / OUT_RATE
+  }
+
+  /**
+   * What the timer shows: recorded time, plus however long the audio has been missing.
+   * When audio comes back that missing stretch is filled with silence, so this never jumps back.
+   */
+  get liveElapsed() {
+    if (this.state !== 'recording' || !this.lastWall) return this.elapsed
+    const missing = (Date.now() - this.lastWall) / 1000
+    return missing > GAP_SEC ? this.elapsed + missing : this.elapsed
   }
 
   /** Create the AudioContext. Call synchronously inside a tap (iOS rule). */
@@ -60,7 +80,10 @@ export class LectureRecorder {
     // keep the graph pulling; output is silent because the worklet writes nothing
     this.node.connect(this.ctx!.destination)
     this.state = 'recording'
+    this.lastWall = Date.now()
     document.addEventListener('visibilitychange', this.revive)
+    window.addEventListener('pageshow', this.revive)
+    window.addEventListener('focus', this.revive)
     this.onUpdate?.()
   }
 
@@ -73,19 +96,70 @@ export class LectureRecorder {
     for (const t of this.stream.getAudioTracks()) t.onended = () => void this.revive()
   }
 
-  /** iOS can suspend the context or kill the mic track; try to bring both back. */
+  /**
+   * iOS stops the mic when the screen turns off or the app goes to the background. When the
+   * page is visible again, bring the audio context and mic back. If iOS insists on a tap,
+   * `stalled` turns on and the recording screen shows a big "Tap to continue" button, which
+   * calls this again from inside the tap.
+   */
   revive = async () => {
     if (this.state !== 'recording' || document.visibilityState !== 'visible' || !this.ctx) return
     if (this.ctx.state !== 'running') await this.ctx.resume().catch(() => {})
-    const live = this.stream?.getAudioTracks().some((t) => t.readyState === 'live')
+    const live = this.stream?.getAudioTracks().some((t) => t.readyState === 'live' && t.enabled && !t.muted)
     if (!live) {
       this.source?.disconnect()
+      this.stream?.getTracks().forEach((t) => t.stop())
       await this.attachMic().catch(() => {})
     }
+    clearTimeout(this.stallTimer)
+    this.stallTimer = window.setTimeout(() => {
+      const stalled = this.state === 'recording' && Date.now() - this.lastWall > GAP_SEC * 1000
+      if (stalled !== this.stalled) {
+        this.stalled = stalled
+        this.onUpdate?.()
+      }
+    }, 1500)
+  }
+
+  /** Fill a stretch with silence so the audio timeline matches real time. */
+  private fillSilence(sec: number) {
+    const from = this.elapsed
+    let left = Math.round(Math.min(sec, MAX_GAP_FILL_SEC) * OUT_RATE)
+    const zeros = new Int16Array(OUT_RATE)
+    while (left > 0) {
+      const n = Math.min(left, OUT_RATE)
+      const mp3 = this.encoder.encodeBuffer(n === OUT_RATE ? zeros : zeros.subarray(0, n))
+      if (mp3.length) this.pending.push(mp3)
+      this.samples += n
+      this.pendingSamples += n
+      // silent seconds in the loudness log, so they're never transcribed (or paid for)
+      this.secN += n
+      while (this.secN >= OUT_RATE) {
+        this.loudness.push(this.secSumSq > 0 ? Math.min(1, Math.round(Math.sqrt(this.secSumSq / OUT_RATE) * 4 * 1000) / 1000) : 0)
+        this.secSumSq = 0
+        this.secN -= OUT_RATE
+      }
+      if (this.pendingSamples >= OUT_RATE * FLUSH_EVERY_SEC) this.flush()
+      left -= n
+    }
+    const gap = { from: Math.round(from * 10) / 10, to: Math.round(this.elapsed * 10) / 10 }
+    this.gaps.push(gap)
+    this.onGap?.(gap)
   }
 
   private onSamples(input: Float32Array) {
     if (this.state !== 'recording' || !this.ctx) return
+    const now = Date.now()
+    const missing = (now - this.lastWall) / 1000 - input.length / this.ctx.sampleRate
+    if (this.lastWall && missing > GAP_SEC) {
+      this.carry = new Float32Array(0)
+      this.fillSilence(missing)
+    }
+    this.lastWall = now
+    if (this.stalled) {
+      this.stalled = false
+      clearTimeout(this.stallTimer)
+    }
     // level meter (RMS)
     let sum = 0
     for (let i = 0; i < input.length; i++) sum += input[i] * input[i]
@@ -158,6 +232,7 @@ export class LectureRecorder {
   async resume() {
     if (this.state !== 'paused') return
     this.state = 'recording'
+    this.lastWall = Date.now() // a deliberate pause is not a gap
     await this.ctx?.resume()
     await this.revive()
     this.onUpdate?.()
@@ -166,7 +241,10 @@ export class LectureRecorder {
   /** Stop and persist everything. Returns final duration in seconds. */
   async stop() {
     this.state = 'idle'
+    clearTimeout(this.stallTimer)
     document.removeEventListener('visibilitychange', this.revive)
+    window.removeEventListener('pageshow', this.revive)
+    window.removeEventListener('focus', this.revive)
     await this.flush(true)
     this.stream?.getTracks().forEach((t) => t.stop())
     await this.ctx?.close().catch(() => {})

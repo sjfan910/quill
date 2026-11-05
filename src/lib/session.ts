@@ -23,6 +23,7 @@ function snapshot() {
     durationSec: rec.elapsed,
     chunkCount: rec.chunkCount,
     loudness: rec.loudness.slice(),
+    gaps: rec.gaps.slice(),
     ...(live ? { live: live.segments.slice() } : {}),
   }
 }
@@ -30,6 +31,11 @@ function snapshot() {
 function track(id: string, rec: LectureRecorder, existingLive: { t: number; text: string }[] = []) {
   session.rec = rec
   session.lectureId = id
+  rec.onGap = (g) => {
+    const m = Math.round(g.to - g.from)
+    toast(`⏸ ${m >= 60 ? `${Math.floor(m / 60)} min ${m % 60} s` : `${m} s`} weren't recorded while the screen was off. Keep it on (dimmed).`)
+    void patchLecture(id, snapshot())
+  }
   clearInterval(saveTimer)
   saveTimer = window.setInterval(() => {
     if (session.rec) patchLecture(id, snapshot())
@@ -115,6 +121,7 @@ export async function continueLecture(id: string) {
   const stats = await audioStats(id)
   const prev = await getLecture(id)
   await rec.start(id, stats.durationSec, stats.nextSeq, prev?.loudness ?? [])
+  rec.gaps = prev?.gaps?.slice() ?? []
   // New audio invalidates any transcript/notes made from the shorter recording's transcript.
   await patchLecture(id, { status: 'recording', error: undefined, transcript: undefined, transcriptStats: undefined })
   track(id, rec, prev?.live ?? [])
@@ -124,7 +131,7 @@ export async function addMark(kind: Mark['kind'], text?: string) {
   if (!session.rec || !session.lectureId) return
   const l = await getLecture(session.lectureId)
   if (!l) return
-  const mark: Mark = { t: Math.max(0, session.rec.elapsed - (kind === 'star' ? 3 : 0)), kind, text }
+  const mark: Mark = { t: Math.max(0, session.rec.liveElapsed - (kind === 'star' ? 3 : 0)), kind, text }
   await patchLecture(l.id, { marks: [...l.marks, mark] })
   return mark
 }

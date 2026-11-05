@@ -75,4 +75,6 @@ export type Lecture = {
   /** Slides read once into Markdown (+ which slide files it came from); reused by later runs. */
   slidesText?: string
   slidesTextKey?: string
+  /** Stretches that weren't recorded (screen off etc.), filled with silence. Seconds. */
+  gaps?: { from: number; to: number }[]
 }

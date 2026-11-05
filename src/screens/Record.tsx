@@ -74,8 +74,10 @@ export default function Record({ id }: { id: string }) {
         <div className={`pulse ${paused ? 'paused' : ''}`} style={{ ['--lvl' as string]: level.toFixed(2) }}>
           <div className="pulse-core">{paused ? 'Paused' : <span className="live-dot">● REC</span>}</div>
         </div>
-        <div className="timer">{fmtTime(rec.elapsed)}</div>
-        <p className="hint">{session.awake ? 'Screen stays on. Dim it and leave it face up.' : 'Keep the screen on while recording.'}</p>
+        <div className="timer">{fmtTime(rec.liveElapsed)}</div>
+        <p className="hint">
+          {session.awake ? 'Screen stays on. Dim it, but don\'t lock it: iPhone stops recording when the screen is off.' : 'Keep the screen on while recording: iPhone stops recording when it\'s off.'}
+        </p>
         {session.live && !paused && (
           <p className="caption" aria-live="off">
             {session.live.interim || session.live.segments.at(-1)?.text || 'Listening for words…'}
@@ -111,6 +113,20 @@ export default function Record({ id }: { id: string }) {
           </p>
         )}
       </section>
+
+      {rec.stalled && (
+        <button
+          className="stall-overlay"
+          onClick={async () => {
+            await rec.revive()
+            tick((n) => n + 1)
+          }}
+        >
+          <span className="stall-icon">🎙️</span>
+          <b>Tap to continue recording</b>
+          <span>The screen was off, so iPhone paused the microphone. The missed part will show as a gap in your notes.</span>
+        </button>
+      )}
 
       <footer className="record-foot">
         <button className="btn ghost round" onClick={() => (paused ? resumeRecording() : pauseRecording())}>

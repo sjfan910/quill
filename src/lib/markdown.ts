@@ -50,8 +50,11 @@ function protectMath(md: string): { text: string; math: MathBit[] } {
   return { text: out, math }
 }
 
+// Commands models write that KaTeX doesn't have.
+const fixTex = (tex: string) => tex.replace(/\\qed\b/g, '\\blacksquare').replace(/\\label\{[^}]*\}/g, '')
+
 function typeset(bit: MathBit) {
-  return katex.renderToString(bit.tex, {
+  return katex.renderToString(fixTex(bit.tex), {
     displayMode: bit.display,
     throwOnError: false, // bad LaTeX shows as red source instead of breaking the page
     trust: false,

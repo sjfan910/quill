@@ -1,5 +1,6 @@
 import { findOrCreateCourse, getAudio, getBlob, getCourse, getLecture, listCourses, nextLectureNumber, patchLecture, saveCourse } from './db'
 import { chunkRanges, mergeTranscript, planTranscription } from './gaps'
+import { parseModelJson } from './jsonrepair'
 import { applySectionEdits, type SectionEdit } from './sections'
 import { addSpend, estimate, fmtUsd, isPro, monthSpend, overCap, syncSpend, usageOf } from './pricing'
 import { addPrefs, loadSettings } from './settings'
@@ -168,14 +169,21 @@ Every section is a "- " bullet list (write "- none" if empty). Compress, don't g
 Only when the student gave feedback: list durable preferences that should apply to ALL future lectures (e.g. "Keep bullets under 10 words", "Always show a worked example for proofs"). Phrase each as a short instruction. Return [] when the feedback only concerns this lecture's content, or when there was no feedback. Don't repeat existing standing preferences.`
 }
 
+function gapsText(l: Lecture) {
+  const gaps = (l.gaps ?? []).filter((g) => g.to - g.from >= 2)
+  if (!gaps.length) return ''
+  return `\n\nNOT RECORDED (the phone's screen was off): ${gaps.map((g) => `[${fmtTime(g.from)}]–[${fmtTime(g.to)}]`).join(', ')}. The transcript is silent there. Never invent content for these stretches; mention each one once under ❓ ("Missed [mm:ss]–[mm:ss], screen was off") so the student can fill it in.`
+}
+
 function marksText(l: Lecture) {
-  if (!l.marks.length) return 'The student made no live marks.'
+  if (!l.marks.length) return 'The student made no live marks.' + gapsText(l)
   return (
     'Live marks the student made while recording (timestamps relative to audio start):\n' +
     l.marks
       .map((m) => (m.kind === 'star' ? `- [${fmtTime(m.t)}] ⭐ starred: this moment is important` : `- [${fmtTime(m.t)}] typed note: "${m.text}"`))
       .join('\n') +
-    '\nWork the typed notes into the right sections (questions go under ❓, tasks under ✅, insights inline, marked "(my note)").'
+    '\nWork the typed notes into the right sections (questions go under ❓, tasks under ✅, insights inline, marked "(my note)").' +
+    gapsText(l)
   )
 }
 
@@ -354,7 +362,7 @@ async function callJson<T>(
     const text = textOf(res)
     try {
       if (!text) throw new Error('empty')
-      return { data: JSON.parse(text) as T, usages }
+      return { data: parseModelJson<T>(text), usages }
     } catch {
       if (i === 1) throw new Error(`Gemini's reply was ${reason === 'MAX_TOKENS' ? 'cut off' : 'unreadable'} twice. Try again, or pick another model in Settings.`)
       attempt = [
