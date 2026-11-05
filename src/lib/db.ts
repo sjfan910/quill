@@ -219,3 +219,12 @@ export async function removeLectureFromServer(id: string) {
   await tx.done
 }
 export const notifyChanged = () => changed()
+
+/** Remove every class, lecture, recording and slide from this device (used on sign-out). */
+export async function wipeAll() {
+  const d = await db()
+  const tx = d.transaction(['courses', 'lectures', 'chunks', 'blobs'], 'readwrite')
+  await Promise.all([tx.objectStore('courses').clear(), tx.objectStore('lectures').clear(), tx.objectStore('chunks').clear(), tx.objectStore('blobs').clear()])
+  await tx.done
+  changed()
+}

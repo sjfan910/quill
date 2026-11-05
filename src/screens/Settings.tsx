@@ -5,8 +5,9 @@ import { liveSupported } from '../lib/live'
 import { isPro } from '../lib/pricing'
 import { go } from '../lib/router'
 import SpendProgress from '../components/SpendProgress'
-import { cloudEnabled, setLocalOnly, signInWithGoogle, signOut, useSession } from '../lib/supabase'
-import { syncNow, useSyncStatus } from '../lib/sync'
+import { cloudEnabled, setLocalOnly, signInWithGoogle, useSession } from '../lib/supabase'
+import { signOutAndClear, syncNow, useSyncStatus } from '../lib/sync'
+import { session as recording } from '../lib/session'
 import SpendingSheet from '../components/SpendingSheet'
 import { DEFAULT_STYLE, MAX_PREFS, loadSettings, saveSettings, type Settings as S } from '../lib/settings'
 
@@ -70,14 +71,23 @@ export default function Settings() {
                 <button
                   className="btn ghost"
                   onClick={async () => {
-                    await signOut()
-                    toast('Signed out. Notes stay on this device.')
+                    if (recording.lectureId) return toast('Finish the recording first.')
+                    const ok = confirm(
+                      'Sign out?\n\nYour notes stay safe in your account, but everything is removed from this device, including recordings made on it (audio isn\'t synced).',
+                    )
+                    if (!ok) return
+                    try {
+                      await signOutAndClear()
+                      location.replace('/')
+                    } catch (e) {
+                      toast(e instanceof Error ? e.message : 'Sign out failed')
+                    }
                   }}
                 >
                   Sign out
                 </button>
               </div>
-              <p className="fine">🔒 Your Gemini key lives on Quill's server, not on this device. Audio stays on the phone that recorded it.</p>
+              <p className="fine">🔒 Your Gemini key lives on Quill's server, not on this device. Audio stays on the phone that recorded it. Signing out removes your notes from this device; they stay in your account.</p>
             </>
           ) : (
             <>

@@ -20,11 +20,12 @@ import {
   putLectureFromServer,
   removeCourseFromServer,
   removeLectureFromServer,
+  wipeAll,
 } from './db'
 import { DIRTY_EVENT, isEmpty, readDirty, restoreDirty, takeDirty, type Dirty } from './dirty'
 import { syncSpend } from './pricing'
 import { SYNCED_SETTINGS, loadSettings, saveSettings } from './settings'
-import { supabase } from './supabase'
+import { signOut, supabase } from './supabase'
 import type { Course, Lecture } from './types'
 
 // ---------------------------------------------------------------- status (for the Account card)
@@ -269,4 +270,29 @@ export function stopSync() {
   clearInterval(timer)
   clearTimeout(debounce)
   setStatus({ state: 'off' })
+}
+
+/**
+ * Sign out and leave nothing of the account on this device, so a guest (or another
+ * account) starts clean. Saves any unsynced edits first; refuses to wipe if that fails.
+ * The account's notes stay safe on the server. Audio isn't synced, so it's gone.
+ */
+export async function signOutAndClear() {
+  if (uid) {
+    await syncNow()
+    if (!isEmpty(readDirty())) {
+      throw new Error("Couldn't save your latest changes to your account. Connect to the internet and try again.")
+    }
+  }
+  stopSync()
+  await signOut()
+  await wipeAll()
+  try {
+    for (const k of Object.keys(localStorage)) {
+      if (k === 'quill.localOnly') continue
+      if (k.startsWith('quill.')) localStorage.removeItem(k)
+    }
+  } catch {
+    /* ignore */
+  }
 }
