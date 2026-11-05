@@ -102,20 +102,35 @@ a { color: var(--blue-hi); text-decoration: none; }
 .logo { font-size: 30px; font-weight: 800; letter-spacing: -0.03em; margin: 0; }
 .logo span { color: var(--orange); }
 .hero { display: flex; flex-direction: column; align-items: center; padding: 40px 0 24px; }
+/* The record button IS the app icon (public/icon.svg): same rounded-square shape. */
 .rec-btn {
-  width: 168px; height: 168px; border-radius: 50%;
-  display: grid; place-items: center;
-  background: radial-gradient(circle at 50% 40%, #1a2440, #0b0f19 70%);
-  border: 2px solid rgba(46, 123, 255, 0.5);
-  box-shadow: 0 0 0 10px rgba(46, 123, 255, 0.07), 0 0 60px -10px rgba(46, 123, 255, 0.6);
-  transition: transform 0.15s;
+  --r: 22%; /* matches the icon's corner radius (112/512) */
+  position: relative;
+  width: 176px; height: 176px; border-radius: var(--r);
+  display: block; padding: 0;
+  box-shadow: 0 0 0 1px rgba(46, 123, 255, 0.35), 0 0 0 12px rgba(46, 123, 255, 0.06), 0 18px 60px -12px rgba(46, 123, 255, 0.65);
+  transition: transform 0.15s, box-shadow 0.2s;
+  -webkit-touch-callout: none; user-select: none;
 }
-.rec-btn:active { transform: scale(0.96); }
-.rec-dot {
-  width: 64px; height: 64px; border-radius: 50%;
-  background: var(--orange); box-shadow: 0 0 40px rgba(255, 163, 108, 0.7);
+.rec-btn img { display: block; width: 100%; height: 100%; border-radius: var(--r); pointer-events: none; }
+.rec-btn:active { transform: scale(0.95); box-shadow: 0 0 0 1px rgba(46, 123, 255, 0.5), 0 0 0 8px rgba(46, 123, 255, 0.1), 0 10px 40px -12px rgba(46, 123, 255, 0.8); }
+.rec-btn:not(.live)::after {
+  /* soft "tap me" ring that breathes outward */
+  content: ''; position: absolute; inset: -2px; border-radius: var(--r);
+  border: 2px solid rgba(46, 123, 255, 0.45); animation: ring 2.4s ease-out infinite; pointer-events: none;
 }
-.rec-btn.live .rec-dot { border-radius: 14px; width: 52px; height: 52px; animation: breathe 1.6s ease-in-out infinite; }
+.rec-btn.live { box-shadow: 0 0 0 2px var(--orange), 0 0 0 12px rgba(255, 163, 108, 0.12), 0 18px 60px -12px rgba(255, 163, 108, 0.7); }
+.rec-btn.live::after {
+  content: ''; position: absolute; inset: -2px; border-radius: var(--r);
+  border: 2px solid rgba(255, 163, 108, 0.7); animation: ring 1.6s ease-out infinite; pointer-events: none;
+}
+.rec-badge {
+  position: absolute; top: -10px; right: -10px; padding: 4px 10px; border-radius: 999px;
+  background: var(--orange); color: #1d1206; font-size: 12px; font-weight: 800; letter-spacing: 0.06em;
+  box-shadow: 0 4px 14px rgba(255, 163, 108, 0.5); animation: breathe 1.6s ease-in-out infinite;
+}
+@keyframes ring { from { transform: scale(1); opacity: 0.9; } to { transform: scale(1.14); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .rec-btn::after, .rec-badge { animation: none; } }
 @keyframes breathe { 50% { opacity: 0.6; } }
 .hero-label { font-size: 19px; font-weight: 600; margin: 20px 0 14px; }
 .course-pick {

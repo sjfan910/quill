@@ -57,11 +57,12 @@ export default function Home() {
       <section className="hero">
         {session.lectureId ? (
           <button className="rec-btn live" onClick={start} aria-label="Back to recording">
-            <span className="rec-dot" />
+            <img src="/icon.svg" alt="" draggable={false} />
+            <span className="rec-badge">● REC</span>
           </button>
         ) : (
           <button className="rec-btn" onClick={start} disabled={starting} aria-label="Start recording">
-            <span className="rec-dot" />
+            <img src="/icon.svg" alt="" draggable={false} />
           </button>
         )}
         <p className="hero-label">{session.lectureId ? 'Recording… tap to return' : 'Tap to record'}</p>
