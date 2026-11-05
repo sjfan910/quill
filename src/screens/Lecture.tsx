@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
-import { Sheet, toast } from '../components/ui'
+import { Sheet, SubmitHint, onSubmitKey, toast } from '../components/ui'
 import { deleteLecture, getAudio, getCourse, getLecture, listCourses, nextLectureNumber, patchLecture, putBlob } from '../lib/db'
 import { canDirectExport, copyRich, exportToGoogleDoc, preloadGoogle } from '../lib/gdocs'
 import { isRunning, lectureCost, processLecture } from '../lib/gemini'
@@ -366,7 +366,16 @@ function ImproveSheet({ open, onClose, lectureId, onGo }: { open: boolean; onClo
           </button>
         ))}
       </div>
-      <textarea rows={3} value={fb} onChange={(e) => setFb(e.target.value)} placeholder="Or say what to change…" />
+      <textarea
+        rows={3}
+        value={fb}
+        onChange={(e) => setFb(e.target.value)}
+        onKeyDown={onSubmitKey(() => {
+          if (fb.trim() || l?.slides.length) onGo(fb.trim() || undefined)
+        })}
+        placeholder="Or say what to change…"
+      />
+      <SubmitHint />
       <button className="big-btn blue" disabled={!fb.trim() && !l?.slides.length} onClick={() => onGo(fb.trim() || undefined)}>
         ✨ Update notes
       </button>

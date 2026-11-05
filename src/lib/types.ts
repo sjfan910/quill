@@ -26,7 +26,7 @@ export type TranscriptSeg = {
 
 export type Usage = {
   model: string
-  kind?: 'transcribe' | 'notes'
+  kind?: 'transcribe' | 'notes' | 'slides'
   promptTokens: number
   audioTokens?: number
   costUsd?: number
@@ -37,7 +37,7 @@ export type Usage = {
 
 export type HistoryEntry = {
   at: number
-  kind: 'generate' | 'refine' | 'transcribe'
+  kind: 'generate' | 'refine' | 'transcribe' | 'slides'
   feedback?: string
   slides?: string[]
   usage?: Usage
@@ -72,4 +72,7 @@ export type Lecture = {
   /** Final merged transcript (live + Gemini for the gaps). Notes and Improve run on this text. */
   transcript?: TranscriptSeg[]
   transcriptStats?: { liveSec: number; paidSec: number; speechSec: number }
+  /** Slides read once into Markdown (+ which slide files it came from); reused by later runs. */
+  slidesText?: string
+  slidesTextKey?: string
 }

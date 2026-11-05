@@ -142,7 +142,7 @@ async function generate(user: User, b: { model?: string; body?: unknown; kind?: 
     body: JSON.stringify({
       user_id: user.id,
       lecture_id: b.lectureId ?? null,
-      kind: b.kind === 'transcribe' ? 'transcribe' : 'notes',
+      kind: b.kind === 'transcribe' || b.kind === 'slides' ? b.kind : 'notes',
       model,
       prompt_tokens: u.promptTokenCount ?? 0,
       audio_tokens: c.audio,

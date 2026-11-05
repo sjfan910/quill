@@ -52,3 +52,27 @@ export function TopBar({ back, title, right }: { back?: { label: string; onClick
     </header>
   )
 }
+
+// ---------------------------------------------------------------- ⌘↩ / Ctrl+Enter to submit
+
+const isApple = () => /Mac|iPhone|iPad|iPod/.test(navigator.platform || navigator.userAgent)
+
+/** onKeyDown handler: ⌘+Return (Mac) or Ctrl+Enter (Windows/Linux) runs `submit`. */
+export const onSubmitKey = (submit: () => void) => (e: { key: string; metaKey: boolean; ctrlKey: boolean; preventDefault: () => void }) => {
+  if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+    e.preventDefault()
+    submit()
+  }
+}
+
+/** Small "⌘↩ to send" hint, shown only on devices with a keyboard and mouse/trackpad. */
+export function SubmitHint({ action = 'send' }: { action?: string }) {
+  const [show] = useState(() => typeof matchMedia !== 'undefined' && matchMedia('(pointer: fine)').matches)
+  if (!show) return null
+  return (
+    <p className="kbd-hint">
+      <kbd>{isApple() ? '⌘' : 'Ctrl'}</kbd>
+      <kbd>{isApple() ? '↩' : 'Enter'}</kbd> to {action}
+    </p>
+  )
+}

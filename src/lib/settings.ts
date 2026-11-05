@@ -6,7 +6,8 @@ export const DEFAULT_STYLE = `• Visual and scannable first. I should get the l
   ⭐ lecturer emphasized it     🎯 likely exam material     ❓ unclear / ask about
 • **Bold** every key term the first time it appears.
 • Use tables for comparisons (A vs B) and for definitions.
-• For CS: put code, pseudocode and formulas in code blocks; show a tiny worked example when a concept is abstract.
+• Math looks like worked solutions: LaTeX for every formula, step-by-step aligned derivations, definition/theorem/proof blocks.
+• For CS: put code and pseudocode in code blocks; show a tiny worked example when a concept is abstract.
 • Plain English. Explain like a smart TA, not a textbook.`
 
 export type Settings = {

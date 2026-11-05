@@ -1,5 +1,6 @@
 import { findOrCreateCourse, getAudio, getBlob, getCourse, getLecture, listCourses, nextLectureNumber, patchLecture, saveCourse } from './db'
 import { chunkRanges, mergeTranscript, planTranscription } from './gaps'
+import { applySectionEdits, type SectionEdit } from './sections'
 import { addSpend, estimate, fmtUsd, isPro, monthSpend, overCap, syncSpend, usageOf } from './pricing'
 import { addPrefs, loadSettings } from './settings'
 import type { Course, HistoryEntry, Lecture, TranscriptSeg, Usage } from './types'
@@ -113,7 +114,7 @@ ${style}
 How the ideas connect, as a short arrow chain or 3-5 bullets. Use the course memory to link to earlier lectures ("builds on L3: …") when relevant.
 
 ## 📚 Notes
-One "###" section per topic, in lecture order. Start each section heading with the timestamp where it begins, like "### [12:34] Topic". Inside: concise bullets, nested where useful, tables for comparisons, code blocks for code/pseudocode/math, 🧪 worked examples.
+One "###" section per topic, in lecture order. Start each section heading with the timestamp where it begins, like "### [12:34] Topic". Inside: concise bullets, nested where useful, tables for comparisons, code blocks for code/pseudocode, LaTeX for all math, 🧪 worked examples.
 
 ## 🔑 Key terms
 | Term | Meaning |  (every important term, one line each; reuse the course glossary's wording for terms already defined)
@@ -125,13 +126,19 @@ One "###" section per topic, in lecture order. Start each section heading with t
 Things that were confusing, contradictory or worth asking the professor or TA about. Include the student's own typed questions.
 
 Timestamps: write them as [mm:ss] (or [h:mm:ss] past one hour), measured from the start of the recording; reuse the transcript's timestamps. Add a timestamp to every "###" heading, and inline wherever pointing back to the audio would help.
-Do not use LaTeX ($...$). Write math in plain text or code blocks.
+## Math: write it like worked solutions, in LaTeX (the app typesets it)
+- Every formula, symbol, variable, set, sum, probability, complexity bound or equation is LaTeX: inline $...$ (e.g. $\Pr[X = k] = \frac{\lambda^k e^{-\lambda}}{k!}$, $O(n \log n)$, $\forall x \in S$), display $$...$$ on its own line for anything important.
+- Derivations and worked examples are step-by-step aligned blocks, one step per line, with a short reason after each step:
+  $$\begin{aligned} \sum_{v \in V} \deg(v) &= \sum_{e \in E} 2 && \text{each edge has 2 endpoints} \\ &= 2|E| \end{aligned}$$
+- Definitions, theorems, lemmas and proofs read like a textbook: "> **📌 Definition (Tree).** A connected graph with no cycles." / "> **Theorem.** …" then "**Proof.** …" with steps, ending with $\blacksquare$.
+- Use LaTeX inside tables too. Never put math in code blocks; code blocks are for actual code and pseudocode only.
+- Write dollar amounts as "USD 5" or "5 dollars", never "$5", so they aren't mistaken for math.
 
 ## mindmapMarkdown: a mind map of the lecture (rendered with markmap)
 - First line "# <short lecture title>".
 - 4-7 main branches as "## <emoji> <label>", each with nested "- " bullets up to 2 levels deep.
 - Labels are 1-6 words: keywords, not sentences. Show relationships with → where useful.
-- Cover the whole lecture; make the structure reveal how ideas connect. Plain text only, no HTML.
+- Cover the whole lecture; make the structure reveal how ideas connect. Plain text only: no HTML, no LaTeX (write x^2, Σ, ≤ as plain symbols).
 
 ## Course detection
 Pick the course this lecture belongs to. If it clearly matches one of the student's known courses, return that course's exact code and name. Otherwise infer it from what is said (Georgia Tech codes look like "CS 2050", "MATH 1554", "INTA 2050"). If you can't tell, return courseCode "UNSORTED".
@@ -195,16 +202,84 @@ function memoryText(courses: Course[], fixed: Course | undefined, number: number
   return out.join('\n\n')
 }
 
-async function slidesParts(l: Lecture): Promise<Part[]> {
+// ---------------------------------------------------------------- slides: read once, reuse as text
+
+const SLIDES_SCHEMA = { type: Type.OBJECT, properties: { markdown: { type: Type.STRING } }, required: ['markdown'] }
+const SLIDES_PROMPT = `You convert lecture slides into compact Markdown for a student's note-taking app.
+- For each slide, in order: "### Slide <n>: <title>" then terse bullets with all of its text content.
+- All math as LaTeX ($...$ inline, $$...$$ display). Code as code blocks.
+- Describe each diagram, chart or figure in one line ("Diagram: …").
+- Skip logos, footers, page numbers and purely decorative text.`
+
+/**
+ * Slides are sent to Gemini once (cheapest model) and kept as text on the lecture. Every
+ * later Improve/remake reuses that text instead of re-uploading and re-reading the files.
+ * Re-reads only when the set of slide files changes.
+ */
+async function ensureSlidesText(id: string, step: Progress, meta: Meta) {
+  const l = (await getLecture(id))!
+  if (!l.slides.length) return l.slidesText
+  const key = l.slides.map((s) => s.key).join('|')
+  if (l.slidesText && l.slidesTextKey === key) return l.slidesText
   const parts: Part[] = []
   for (const s of l.slides) {
     const blob = await getBlob(s.key)
-    if (!blob) continue
+    if (!blob) continue // slide files live on the device they were added on
+    step('Reading your slides (once)…')
     const f = await uploadAndWait(blob, s.type, s.name)
     parts.push(createPartFromUri(f.uri!, f.mimeType ?? s.type))
   }
-  return parts
+  if (!parts.length) return l.slidesText
+  parts.push({ text: `${parts.length} slide file(s) above.` })
+  const model = loadSettings().transcribeModel || 'gemini-flash-lite-latest'
+  const { data, usages } = await callJson<{ markdown: string }>(model, 'slides', parts, SLIDES_PROMPT, SLIDES_SCHEMA, 'minimal', 16384, meta)
+  const text = (data.markdown ?? '').trim()
+  const now = (await getLecture(id))!
+  await patchLecture(id, {
+    slidesText: text,
+    slidesTextKey: key,
+    history: [...now.history, ...usages.map((usage) => ({ at: Date.now(), kind: 'slides' as const, slides: l.slides.map((s) => s.name), usage }))],
+  })
+  return text
 }
+
+// ---------------------------------------------------------------- Improve: change only what the feedback is about
+
+const IMPROVE_SCHEMA = {
+  type: Type.OBJECT,
+  properties: {
+    scope: { type: Type.STRING, enum: ['sections', 'all'] },
+    edits: {
+      type: Type.ARRAY,
+      items: {
+        type: Type.OBJECT,
+        properties: {
+          heading: { type: Type.STRING, description: 'Existing heading line copied exactly, or a new heading line.' },
+          markdown: { type: Type.STRING, description: 'The complete new section, starting with its heading line.' },
+          after: { type: Type.STRING, description: 'For a NEW section: the existing heading line it follows. Otherwise "".' },
+        },
+        required: ['heading', 'markdown', 'after'],
+        propertyOrdering: ['heading', 'markdown', 'after'],
+      },
+    },
+    notesMarkdown: { type: Type.STRING, description: 'Only when scope is "all": the complete revised notes. Otherwise "".' },
+    mindmapMarkdown: { type: Type.STRING, description: '"" to keep the current mind map.' },
+    learnedPreferences: { type: Type.ARRAY, items: { type: Type.STRING } },
+  },
+  required: ['scope', 'edits', 'notesMarkdown', 'mindmapMarkdown', 'learnedPreferences'],
+  propertyOrdering: ['scope', 'edits', 'notesMarkdown', 'mindmapMarkdown', 'learnedPreferences'],
+}
+type ImproveResult = { scope: 'sections' | 'all'; edits: SectionEdit[]; notesMarkdown: string; mindmapMarkdown: string; learnedPreferences: string[] }
+
+const editInstructions = (feedback: string) => `The student's feedback on the current notes:
+"""${feedback}"""
+
+Change ONLY what the feedback asks for; keep everything else word for word. Reply in the edit format:
+- The notes are made of sections. A section is one heading line ("#", "##" or "###") plus the text up to the next heading line.
+- If the feedback concerns particular parts, set scope "sections" and put each changed section in "edits": "heading" = that section's heading line copied EXACTLY from the current notes (or a new heading line for a new section), "markdown" = the complete new section starting with its heading line, "after" = for a new section, the existing heading line it should follow (else ""). Leave notesMarkdown "".
+- Only if the feedback genuinely changes the whole document (e.g. "make everything shorter", a different overall structure), set scope "all", put the complete revised notes in notesMarkdown and leave edits [].
+- mindmapMarkdown: "" unless the change alters the lecture's structure.
+- Course memory is not needed for this edit. Decide whether the feedback reveals a durable preference (learnedPreferences).`
 
 // ---------------------------------------------------------------- model calls
 //
@@ -224,7 +299,7 @@ function thinkingOptions(model: string, effort: Effort): (ThinkingConfig | undef
 
 type Meta = { lectureId?: string; overCapOk?: boolean }
 
-async function callOnce(model: string, kind: 'transcribe' | 'notes', parts: Part[], system: string, schema: object, effort: Effort, maxOutputTokens: number, meta: Meta) {
+async function callOnce(model: string, kind: 'transcribe' | 'notes' | 'slides', parts: Part[], system: string, schema: object, effort: Effort, maxOutputTokens: number, meta: Meta) {
   let lastErr: unknown
   for (const thinkingConfig of thinkingOptions(model, effort)) {
     try {
@@ -258,7 +333,7 @@ async function callOnce(model: string, kind: 'transcribe' | 'notes', parts: Part
  */
 async function callJson<T>(
   model: string,
-  kind: 'transcribe' | 'notes',
+  kind: 'transcribe' | 'notes' | 'slides',
   parts: Part[],
   system: string,
   schema: object,
@@ -465,9 +540,9 @@ async function run(id: string, { feedback, manual = false, retranscribe = false,
     const transcript = await ensureTranscript(id, step, accurate, meta)
     if (!transcript.length) throw new Error("Quill couldn't hear any speech in this recording.")
 
+    const slidesText = await ensureSlidesText(id, step, meta)
     l = (await getLecture(id))!
-    if (l.slides.length) step('Uploading slides…')
-    const slides = await slidesParts(l)
+    const editing = refining && !!feedback && !!l.notesMd
 
     const courses = await listCourses()
     const fixed = l.courseId ? await getCourse(l.courseId) : undefined
@@ -480,10 +555,9 @@ async function run(id: string, { feedback, manual = false, retranscribe = false,
         text: `Lecture transcript (${fmtTime(l.durationSec)} recording; machine transcription, may contain misheard words):\n\n${transcriptText(transcript)}`,
       },
     ]
-    if (slides.length) {
-      parts.push(...slides)
+    if (slidesText) {
       parts.push({
-        text: 'The lecture slides are attached above. Use them to fix terminology and spelling, fill in formulas, diagrams-in-words and details the transcript missed, and align the section structure with the slides. The transcript remains the source of truth for what the lecturer emphasized.',
+        text: `Lecture slides (text extracted from the deck):\n\n${slidesText}\n\nUse the slides to fix terminology and spelling, fill in formulas, diagrams-in-words and details the transcript missed, and align the section structure with them. The transcript remains the source of truth for what the lecturer emphasized.`,
       })
     }
     parts.push({ text: memoryText(courses, fixed, number, settings.prefs) })
@@ -491,16 +565,44 @@ async function run(id: string, { feedback, manual = false, retranscribe = false,
     if (refining && l.notesMd) {
       parts.push({ text: `Current version of the notes:\n\n${l.notesMd}` })
       parts.push({
-        text: feedback
-          ? `Revise the notes according to the student's feedback, keeping everything else that is good:\n"""${feedback}"""\nAlso decide whether this feedback reveals a durable preference (learnedPreferences).`
+        text: editing
+          ? editInstructions(feedback!)
           : 'Revise and improve the current notes using the slides. There is no feedback, so learnedPreferences must be [].',
       })
     } else {
       parts.push({ text: 'There is no feedback yet, so learnedPreferences must be [].' })
     }
 
-    step(refining ? 'Refining notes…' : 'Writing your notes…')
-    const { data: r, usages } = await callJson<Result>(model, 'notes', parts, systemPrompt(settings.style), SCHEMA, 'low', 32768, meta)
+    step(editing ? 'Editing your notes…' : refining ? 'Refining notes…' : 'Writing your notes…')
+    let r: Result
+    let usages: Usage[]
+    if (editing) {
+      const out = await callJson<ImproveResult>(model, 'notes', parts, systemPrompt(settings.style), IMPROVE_SCHEMA, 'low', 32768, meta)
+      usages = out.usages
+      const e = out.data
+      let notes: string
+      // A full rewrite is accepted whenever that's what came back (scope "all", or no edits at all).
+      if (e.notesMarkdown?.trim() && (e.scope === 'all' || !e.edits?.length)) notes = e.notesMarkdown
+      else {
+        const applied = applySectionEdits(l.notesMd!, e.edits ?? [])
+        if (!applied.replaced && !applied.added) throw new Error('Gemini made no changes. Try wording the feedback differently.')
+        notes = applied.md
+      }
+      r = {
+        courseCode: '',
+        courseName: '',
+        lectureTitle: l.title,
+        summary: l.summary ?? '',
+        notesMarkdown: notes,
+        mindmapMarkdown: e.mindmapMarkdown?.trim() || l.mindmapMd || '',
+        courseMemory: '', // unchanged by an edit
+        learnedPreferences: e.learnedPreferences ?? [],
+      }
+    } else {
+      const out = await callJson<Result>(model, 'notes', parts, systemPrompt(settings.style), SCHEMA, 'low', 32768, meta)
+      r = out.data
+      usages = out.usages
+    }
 
     step('Filing it in your library…')
     l = (await getLecture(id))!

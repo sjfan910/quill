@@ -92,7 +92,7 @@ async function server<T>(token: string, action: string, body: object): Promise<T
   return (await r.json()) as T
 }
 
-export type CallMeta = { kind: 'transcribe' | 'notes'; lectureId?: string; overCapOk?: boolean }
+export type CallMeta = { kind: 'transcribe' | 'notes' | 'slides'; lectureId?: string; overCapOk?: boolean }
 
 /** generateContent. When signed in, also returns the server's month-to-date spend. */
 export async function generateContent(model: string, body: GenRequest, meta: CallMeta): Promise<{ res: GenResponse; monthSpend?: number }> {

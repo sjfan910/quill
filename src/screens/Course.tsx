@@ -5,7 +5,7 @@ import { useData } from '../lib/hooks'
 import { go } from '../lib/router'
 import { fmtDate, fmtDuration } from '../lib/util'
 import EditClassSheet from '../components/EditClassSheet'
-import { Sheet, TopBar, toast } from '../components/ui'
+import { Sheet, SubmitHint, TopBar, onSubmitKey, toast } from '../components/ui'
 
 const STATUS: Record<string, string> = { saved: 'Needs notes', error: 'Needs notes', processing: 'Working…', recording: 'Recording' }
 
@@ -19,6 +19,12 @@ export default function Course({ id }: { id: string }) {
     }, [id]) ?? []
 
   const [memOpen, setMemOpen] = useState(false)
+  async function saveMemory() {
+    if (!course || editing === null) return
+    await saveCourse({ ...course, memory: editing.trim() || undefined, memoryUpdatedAt: Date.now() })
+    setEditing(null)
+    toast('🧠 Memory saved')
+  }
   const [editing, setEditing] = useState<string | null>(null)
 
   const [editOpen, setEditOpen] = useState(false)
@@ -108,15 +114,14 @@ export default function Course({ id }: { id: string }) {
         >
           {editing !== null ? (
             <>
-              <textarea rows={14} value={editing} onChange={(e) => setEditing(e.target.value)} />
-              <button
-                className="big-btn blue"
-                onClick={async () => {
-                  await saveCourse({ ...course, memory: editing.trim() || undefined, memoryUpdatedAt: Date.now() })
-                  setEditing(null)
-                  toast('🧠 Memory saved')
-                }}
-              >
+              <textarea
+                rows={14}
+                value={editing}
+                onChange={(e) => setEditing(e.target.value)}
+                onKeyDown={onSubmitKey(() => void saveMemory())}
+              />
+              <SubmitHint action="save" />
+              <button className="big-btn blue" onClick={() => void saveMemory()}>
                 Save
               </button>
             </>

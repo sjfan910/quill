@@ -7,7 +7,7 @@ import { Sheet } from './ui'
 
 const month = () => new Date().toISOString().slice(0, 7)
 const k = (n: number) => (n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${Math.round(n / 1e3)}k` : String(n))
-const KIND: Record<string, string> = { transcribe: 'Transcription', generate: 'Notes', refine: 'Improve' }
+const KIND: Record<string, string> = { transcribe: 'Transcription', slides: 'Slides (read once)', generate: 'Notes', refine: 'Improve' }
 
 export default function SpendingSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
   const lectures = useData(listLectures) ?? []
@@ -37,7 +37,7 @@ export default function SpendingSheet({ open, onClose }: { open: boolean; onClos
 
       <h3 className="mini-title">Where it went</h3>
       <ul className="confirm-list">
-        {['transcribe', 'generate', 'refine'].map((kind) => (
+        {['transcribe', 'slides', 'generate', 'refine'].map((kind) => (
           <li key={kind}>
             <span>{KIND[kind]}</span>
             <b>{fmtUsd(byKind[kind] ?? 0)}</b>

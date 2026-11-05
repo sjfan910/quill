@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { courseWithCode, createCourse, fileUnsorted, mergeCourses, renameCourse } from '../lib/db'
 import { go } from '../lib/router'
-import { Sheet, toast } from './ui'
+import { Sheet, SubmitHint, toast } from './ui'
 
 /** Rename a class (code + name). Renaming onto an existing code offers a merge. Also files Unsorted lectures. */
 export default function EditClassSheet({
@@ -71,6 +71,7 @@ export default function EditClassSheet({
       <label className="field">
         <span>Class code</span>
         <input
+          onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), void save())}
           value={code}
           onChange={(e) => {
             setCode(e.target.value)
@@ -84,7 +85,7 @@ export default function EditClassSheet({
       </label>
       <label className="field">
         <span>Class name (optional)</span>
-        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Intro to Discrete Math" />
+        <input onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), void save())} value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Intro to Discrete Math" />
       </label>
       {clash && (
         <p className="hint-box">
@@ -92,6 +93,7 @@ export default function EditClassSheet({
           {courseId ? (count === 1 ? 'Tap again to move this lecture into it.' : `Tap again to move these ${count} lectures into it.`) : 'Tap again to add them to it.'}
         </p>
       )}
+      <SubmitHint action="save" />
       <button className="big-btn blue" onClick={save} disabled={busy || !code.trim()}>
         {clash ? (courseId ? `Merge into ${clash.code}` : `Add to ${clash.code}`) : 'Save'}
       </button>
